@@ -1,5 +1,5 @@
 import { segment } from "icqq";
-import plugin from '../../lib/plugins/plugin.js'
+import plugin from '../../../lib/plugins/plugin.js'
 import https from 'https';
 
 export class DailyDogLick extends plugin {
