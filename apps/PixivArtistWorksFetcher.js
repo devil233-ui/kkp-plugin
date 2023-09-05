@@ -45,6 +45,7 @@ export class PixivArtistWorksFetcher extends plugin {
     }
 
     async processArtistWorks(e) {
+		if (!e.isGroup) return;
         const match = e.msg.match(/^#来(\d+)张(\d+)作品$/);
         if (!match) return;
 
@@ -80,6 +81,7 @@ export class PixivArtistWorksFetcher extends plugin {
     }
 
     async sendWorkDetails(e, details) {
+		if (!e.isGroup) return;
         const body = details.body;
         const imageUrls = Object.values(body.urls).map(url => `${url}?key=${keyValue}`);
 

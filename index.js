@@ -1,8 +1,6 @@
 import fs from 'node:fs'
-import chalk from 'chalk'
 
 const files = fs.readdirSync('./plugins/kkp-plugin/apps').filter(file => file.endsWith('.js'))
-
 
 let ret = []
 

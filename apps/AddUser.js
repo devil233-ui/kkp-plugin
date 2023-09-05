@@ -8,10 +8,10 @@ import { user } from '../config/api.js';
 export class ArtistSubscription extends plugin {
     constructor() {
         super({
-            name: 'Artist Subscription Manager',
-            dsc: 'Manages subscriptions of artist IDs in YAML',
+            name: '订阅画师',
+            dsc: '订阅画师',
             event: 'message',
-            priority: '50',
+            priority: '500',
             rule: [
                 {
                     reg: '^#订阅画师(\\d+)$',
@@ -57,13 +57,14 @@ export class ArtistSubscription extends plugin {
     }
 
     async subscribeArtist(e) {
+        if (!e.isGroup) return;  
+
         const msg = e.msg.trim();
         const matches = msg.match(/^#订阅画师(\d+)$/);
         const artistId = matches ? matches[1] : null;
 
         if (!artistId) return;
 
-        // 首先检查画师ID是否有效
         let artistName;
         try {
             const response = await axios.get(user(artistId));
@@ -95,6 +96,8 @@ export class ArtistSubscription extends plugin {
     }
 
     async unsubscribeArtist(e) {
+        if (!e.isGroup) return;  
+
         const msg = e.msg.trim();
         const matches = msg.match(/^#取消订阅(\\d+)$/);
         const artistId = matches ? matches[1] : null;
@@ -114,6 +117,8 @@ export class ArtistSubscription extends plugin {
     }
 
     async listSubscribedArtists(e) {
+        if (!e.isGroup) return;  
+
         const artists = this.loadArtists();
 
         if (Object.keys(artists).length === 0) {

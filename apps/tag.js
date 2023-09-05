@@ -58,6 +58,7 @@ export class SetuImageFetcher extends plugin {
     }
 
     async _processSetuImages(e, r18) {
+		if (!e.isGroup) return;
         const [, numStr, tag] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
         const num = parseInt(numStr);
 
@@ -89,6 +90,7 @@ export class SetuImageFetcher extends plugin {
     }
 
     async sendPixivDetails(e, body) {
+		if (!e.isGroup) return;
         const imageUrls = Object.values(body.urls).map(url => `${url}?key=${keyValue}`); // 在URL后添加key
 
         const tagList = body.tags.tags.map(tagObj => tagObj.tag);

@@ -24,7 +24,7 @@ export class ArtistDetailsScheduler extends plugin {
         });
 
         // 定时任务，每4小时执行一次
-        schedule.scheduleJob('0 */4 * * *', async () => {
+        schedule.scheduleJob('*/10 * * * *', async () => {
             const groupIds = this.getGroupIds();
             if (groupIds.length === 0) return;
 

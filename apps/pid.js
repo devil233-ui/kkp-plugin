@@ -1,15 +1,15 @@
 import plugin from '../../../lib/plugins/plugin.js';
 import axios from 'axios';
 import { segment } from "icqq";
-import { pid as pidAPI, user, keyValue } from '../config/api.js';  // 导入keyValue
+import { pid as pidAPI, user, keyValue } from '../config/api.js';  
 
 export class PixivImageFetcher extends plugin {
     constructor() {
         super({
-            name: 'Pixiv Image Fetcher',
-            dsc: 'Fetches images from Pixiv using PID',
+            name: '获取p站图',
+            dsc: '获取p站图',
             event: 'message',
-            priority: '50',
+            priority: '500',
             rule: [
                 {
                     reg: '^#?pid(\\d+)$',
@@ -46,6 +46,7 @@ export class PixivImageFetcher extends plugin {
     }
 
     async sendPixivDetails(e, url) {
+		if (!e.isGroup) return;
         const details = await this.fetchImageDetails(url);
 
         if (!details || !details.body) {

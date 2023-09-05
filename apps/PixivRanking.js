@@ -30,18 +30,19 @@ export class DailyRankingFetcher extends plugin {
     }
 
     async fetchDailyRanking(e) {
+		if (!e.isGroup) return;
         const rankingData = await this.fetchDailyRankingData();
         if (!rankingData.length) {
             await e.reply("无法获取每日排行数据");
             return;
         }
 
-        // 获取前20个数据
-        const top20 = rankingData.slice(0, 20);
+        // 获取前30个数据
+        const top30 = rankingData.slice(0, 30);
 
         const allMessages = [];
 
-        for (const item of top20) {
+        for (const item of top30) {
             const msgData = [
                 `id：${item.id}`,
                 `画师：${item.user_name}（${item.user_id}）`,

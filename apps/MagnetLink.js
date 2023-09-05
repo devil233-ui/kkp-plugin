@@ -25,6 +25,7 @@ export class MagnetLink extends plugin {
     }
 
     async magnetHelp(e) {
+		if (!e.isGroup) return;
         let helpText = "搜磁力功能帮助：\n"
         helpText += "输入格式：搜磁力 [搜索内容] [文件类型] [排序方式] [结果数量]\n"
         helpText += "文件类型：全部, 影视, 音乐, 图像, 文档, 压缩包, 安装包, 其他\n"
@@ -34,6 +35,7 @@ export class MagnetLink extends plugin {
     }
 
     async processMagnetLink(e) {
+		if (!e.isGroup) return;
         let match = e.msg.match(/^#?搜磁力\s*(\S+)(\s+(\S+))?(\s+(\S+))?(\s+(\d+))?$/);
         if (!match) {
             return;

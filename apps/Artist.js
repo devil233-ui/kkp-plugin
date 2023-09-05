@@ -5,10 +5,10 @@ import { user } from '../config/api.js';
 export class ArtistDetails extends plugin {
     constructor() {
         super({
-            name: 'Artist Details Fetcher',
-            dsc: 'Fetches artist details and sends work IDs',
+            name: '获取画师作品id',
+            dsc: '获取画师作品id',
             event: 'message',
-            priority: '50',
+            priority: '500',
             rule: [
                 {
                     reg: '^#画师(\\d+)$', 
@@ -32,6 +32,8 @@ export class ArtistDetails extends plugin {
     }
 
     async processArtist(e) {
+        if (!e.isGroup) return;  
+
         try {
             const match = e.msg.match(/^#画师(\d+)$/);
             if (!match) return;
