@@ -1,4 +1,4 @@
-1.克隆项目
+安装
 ```
 git clone https://gitee.com/dungeonmaster/kkp-plugin.git ./plugins/kkp-plugin/
 ```
