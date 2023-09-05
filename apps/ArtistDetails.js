@@ -35,54 +35,57 @@ export class ArtistDetails extends plugin {
         }
     }
 
-    async processArtist() {
-        const artists = this.getArtistIdsAndNames();
+async processArtist() {
+    const artists = this.getArtistIdsAndNames();
+    let messages = [];
 
-        if (!Object.keys(artists).length) {
-            console.error('未添加画师id');
-            return;
-        }
-
-        let noNewWorks = []; // 用于保存没有新作品的画师
-        let firstTimeArtists = []; // 用于保存首次保存的画师
-
-        for (const artistId in artists) {
-            const artistData = await this.fetchArtistDetails(artistId);
-
-            if (!artistData || !artistData.body || !artistData.body.illusts) {
-                console.error(`无法获取画师${artistId}的详情`);
-                continue; // move to the next artistId
-            }
-
-            const oldDataRaw = await redis.get(`artistDetails_${artistId}`);
-            const oldData = oldDataRaw ? JSON.parse(oldDataRaw) : null;
-
-            if (!oldData) {
-                // 首次保存此画师数据
-                firstTimeArtists.push(artists[artistId]);
-                await redis.set(`artistDetails_${artistId}`, JSON.stringify(artistData));
-                continue; 
-            }
-
-            const newWorks = Object.keys(artistData.body.illusts).filter(id => !oldData.body.illusts.hasOwnProperty(id));
-
-            if (newWorks.length > 0) {
-                console.log(`画师${artists[artistId]}（${artistId}）的新的作品ID: ${newWorks.join(', ')}`);
-            } else {
-                noNewWorks.push(artists[artistId]);
-            }
-
-            await redis.set(`artistDetails_${artistId}`, JSON.stringify(artistData));
-        }
-
-        // 如果有画师没有新作品，打印消息
-        if (noNewWorks.length > 0) {
-            console.log(`画师${noNewWorks.join('、')}暂无新作品`);
-        }
-
-        // 如果有首次保存的画师，打印消息
-        if (firstTimeArtists.length > 0) {
-            console.log(`已保存画师${firstTimeArtists.join('、')}数据`);
-        }
+    if (!Object.keys(artists).length) {
+        console.error('未添加画师id');
+        return messages;
     }
+
+    let noNewWorks = [];
+    let firstTimeArtists = [];
+
+    for (const artistId in artists) {
+        const artistData = await this.fetchArtistDetails(artistId);
+
+        if (!artistData || !artistData.body || !artistData.body.illusts) {
+            console.error(`无法获取画师${artistId}的详情`);
+            continue;
+        }
+
+        const oldDataRaw = await redis.get(`artistDetails_${artistId}`);
+        const oldData = oldDataRaw ? JSON.parse(oldDataRaw) : null;
+
+        if (!oldData) {
+            firstTimeArtists.push(artists[artistId]);
+            await redis.set(`artistDetails_${artistId}`, JSON.stringify(artistData));
+            continue;
+        }
+
+        const newWorks = Object.keys(artistData.body.illusts).filter(id => !oldData.body.illusts.hasOwnProperty(id));
+
+        if (newWorks.length > 0) {
+            const message = `画师${artists[artistId]}（${artistId}）的新的作品ID: ${newWorks.join(', ')}`;
+            messages.push(message);
+            console.log(message);
+        } else {
+            noNewWorks.push(artists[artistId]);
+        }
+
+        await redis.set(`artistDetails_${artistId}`, JSON.stringify(artistData));
+    }
+
+    if (noNewWorks.length > 0) {
+        console.log(`画师${noNewWorks.join('、')}暂无新作品`);
+    }
+
+    if (firstTimeArtists.length > 0) {
+        console.log(`已保存画师${firstTimeArtists.join('、')}数据`);
+    }
+
+    return messages;
+}
+
 }
