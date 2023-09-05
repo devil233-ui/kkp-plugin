@@ -1,3 +1,7 @@
+1.克隆项目
+```
+git clone https://gitee.com/dungeonmaster/kkp-plugin.git ./plugins/kkp-plugin/
+```
 
 ## ✨ 功能  <br/>      pixiv功能需加群738166380申请使用权    顶不住太多人用 :sob: <br/>
 
