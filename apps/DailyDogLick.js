@@ -9,7 +9,7 @@ export class DailyDogLick extends plugin {
                 name: '舔狗日记',
                 desc: '舔狗',
                 event: 'message',
-                priority: '55',
+                priority: '50',
                 rule: [
                     {
                         reg: '^舔狗日记$',

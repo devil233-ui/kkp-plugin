@@ -8,7 +8,7 @@ export class CosImageFetcher extends plugin {
             name: 'p站图',
             dsc: '根据tag搜索p站图',
             event: 'message',
-            priority: '70',
+            priority: '60',
             rule: [
                 {
                     reg: '^#?2图$',

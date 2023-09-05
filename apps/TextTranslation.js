@@ -9,7 +9,7 @@ export class TextTranslation extends plugin {
                 name: '文本翻译',
                 dsc: '翻译用户输入的英文',
                 event: 'message',
-                priority: '50',
+                priority: '49',
                 rule: [
                     {
                         reg: '^#?翻译(.+)$',

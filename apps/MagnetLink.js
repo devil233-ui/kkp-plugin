@@ -9,7 +9,7 @@ export class MagnetLink extends plugin {
                 name: '搜磁力',
                 dsc: '获取磁力链接',
                 event: 'message',
-                priority: '776',
+                priority: '77',
                 rule: [
                     {
                         reg: '^#?搜磁力(.*)$',
