@@ -2,7 +2,7 @@ import plugin from '../../../lib/plugins/plugin.js';
 import fs from 'fs';
 import YAML from 'yaml';
 import schedule from "node-schedule";
-import { ArtistDetails } from './ArtistDetails.js';  
+import { ArtistDetails } from './ArtistDetails.js';
 
 export class ArtistDetailsScheduler extends plugin {
     constructor() {
@@ -29,17 +29,7 @@ export class ArtistDetailsScheduler extends plugin {
             if (groupIds.length === 0) return;
 
             const artistDetails = new ArtistDetails();
-            const messages = await artistDetails.processArtist();
-
-            for (const message of messages) {
-                for (const groupId of groupIds) {
-                    const group = Bot.pickGroup(groupId);
-                    group.sendMsg(message);
-                    
-                    // 在发送消息给不同的群之间暂停10秒
-                    await new Promise(res => setTimeout(res, 10000));
-                }
-            }
+            await artistDetails.processArtist();
         });
     }
 

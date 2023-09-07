@@ -1,9 +1,9 @@
+import plugin from '../../../lib/plugins/plugin.js';
 import axios from 'axios';
 import fs from 'fs';
 import YAML from 'yaml';
-import { user, pid as pidAPI, keyValue } from '../config/api.js';
 import { segment } from "icqq";
-import plugin from '../../../lib/plugins/plugin.js';
+import { pid as pidAPI, user, keyValue } from '../config/api.js';
 
 export class ArtistDetails extends plugin {
     constructor() {
@@ -26,7 +26,16 @@ export class ArtistDetails extends plugin {
         return YAML.parse(fileContents).artists || {};
     }
 
-    async fetchDetails(url) {
+    async fetchArtistDetails(artistId) {
+        try {
+            const response = await axios.get(user(artistId));
+            return response.data;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    async fetchImageDetails(url) {
         try {
             const response = await axios.get(url);
             return response.data;
@@ -35,50 +44,16 @@ export class ArtistDetails extends plugin {
         }
     }
 
-    async processArtist(e) {
-        const artists = this.getArtistIdsAndNames();
-        let messages = [];
-
-        if (!Object.keys(artists).length) {
-            return messages;
-        }
-
-        for (const artistId in artists) {
-            const artistData = await this.fetchDetails(user(artistId));
-
-            if (!artistData || !artistData.body || !artistData.body.illusts) {
-                continue;
-            }
-
-            const oldDataRaw = await redis.get(`artistDetails_${artistId}`);
-            const oldData = oldDataRaw ? JSON.parse(oldDataRaw) : null;
-
-            if (!oldData) {
-                await redis.set(`artistDetails_${artistId}`, JSON.stringify(artistData));
-                continue;
-            }
-
-            const newWorks = Object.keys(artistData.body.illusts).filter(id => !oldData.body.illusts.hasOwnProperty(id));
-
-            for (let pid of newWorks) {
-                const url = `${pidAPI(pid)}&key=${keyValue}`;
-                await this.sendPixivDetails(e, url);
-            }
-
-            await redis.set(`artistDetails_${artistId}`, JSON.stringify(artistData));
-        }
-    }
-
-    async sendPixivDetails(e, url) {
-        const details = await this.fetchDetails(url);
+    async sendPixivDetails(e, pid) {
+        const url = `${pidAPI(pid)}&key=${keyValue}`;
+        const details = await this.fetchImageDetails(url);
 
         if (!details || !details.body) {
-            return;
+            throw new Error("请输入正确的pid");
         }
 
         const body = details.body;
         const imageUrls = Object.values(body.urls).map(url => `${url}?key=${keyValue}`);
-
         const tagList = body.tags.tags.map(tagObj => tagObj.tag);
 
         const msgData = [
@@ -95,8 +70,8 @@ export class ArtistDetails extends plugin {
 
         const msgList = {
             message: msgData.concat(imageUrls.map(url => segment.image(url))),
-            nickname: keyValue,
-            user_id: keyValue
+            nickname: 321107534,
+            user_id: 321107534
         };
 
         const forwardMsg = await e.group.makeForwardMsg(msgList);
@@ -114,8 +89,41 @@ export class ArtistDetails extends plugin {
                 forwardMsg.data = `<?xml version="1.0" encoding="utf-8"?><msg brief="[聊天记录]" m_fileName="${fileName}" action="viewMultiMsg" tSum="1" flag="3" m_resid="${resid}" serviceID="35" m_fileSize="0"><item layout="1"><title color="#000000" size="34">转发的聊天记录</title>${preview}<hr></hr><summary color="#808080" size="26">${detail.summary}</summary></item><source name="聊天记录"></source></msg>`;
                 forwardMsg.type = 'xml';
                 forwardMsg.id = 35;
+
                 await e.reply(forwardMsg);
             }
+        }
+    }
+
+    async processArtist() {
+        const artists = this.getArtistIdsAndNames();
+
+        if (!Object.keys(artists).length) {
+            return;
+        }
+
+        for (const artistId in artists) {
+            const artistData = await this.fetchArtistDetails(artistId);
+
+            if (!artistData || !artistData.body || !artistData.body.illusts) {
+                continue;
+            }
+
+            const oldDataRaw = await redis.get(`artistDetails_${artistId}`);
+            const oldData = oldDataRaw ? JSON.parse(oldDataRaw) : null;
+
+            if (!oldData) {
+                await redis.set(`artistDetails_${artistId}`, JSON.stringify(artistData));
+                continue;
+            }
+
+            const newWorks = Object.keys(artistData.body.illusts).filter(id => !oldData.body.illusts.hasOwnProperty(id));
+
+            for (const newWork of newWorks) {
+                this.sendPixivDetails(e, newWork);
+            }
+
+            await redis.set(`artistDetails_${artistId}`, JSON.stringify(artistData));
         }
     }
 }
