@@ -1,8 +1,9 @@
-import plugin from '../../../lib/plugins/plugin.js';
 import axios from 'axios';
 import fs from 'fs';
 import YAML from 'yaml';
-import { user } from '../config/api.js';
+import { user, pid as pidAPI, keyValue } from '../config/api.js';
+import { segment } from "icqq";
+import plugin from '../../../lib/plugins/plugin.js';
 
 export class ArtistDetails extends plugin {
     constructor() {
@@ -25,67 +26,96 @@ export class ArtistDetails extends plugin {
         return YAML.parse(fileContents).artists || {};
     }
 
-    async fetchArtistDetails(artistId) {
+    async fetchDetails(url) {
         try {
-            const response = await axios.get(user(artistId));
+            const response = await axios.get(url);
             return response.data;
         } catch (error) {
-            console.error(`Error fetching artist details: ${error.message}`);
-            return null;
+            throw error;
         }
     }
 
-async processArtist() {
-    const artists = this.getArtistIdsAndNames();
-    let messages = [];
+    async processArtist(e) {
+        const artists = this.getArtistIdsAndNames();
+        let messages = [];
 
-    if (!Object.keys(artists).length) {
-        console.error('未添加画师id');
-        return messages;
-    }
-
-    let noNewWorks = [];
-    let firstTimeArtists = [];
-
-    for (const artistId in artists) {
-        const artistData = await this.fetchArtistDetails(artistId);
-
-        if (!artistData || !artistData.body || !artistData.body.illusts) {
-            console.error(`无法获取画师${artistId}的详情`);
-            continue;
+        if (!Object.keys(artists).length) {
+            return messages;
         }
 
-        const oldDataRaw = await redis.get(`artistDetails_${artistId}`);
-        const oldData = oldDataRaw ? JSON.parse(oldDataRaw) : null;
+        for (const artistId in artists) {
+            const artistData = await this.fetchDetails(user(artistId));
 
-        if (!oldData) {
-            firstTimeArtists.push(artists[artistId]);
+            if (!artistData || !artistData.body || !artistData.body.illusts) {
+                continue;
+            }
+
+            const oldDataRaw = await redis.get(`artistDetails_${artistId}`);
+            const oldData = oldDataRaw ? JSON.parse(oldDataRaw) : null;
+
+            if (!oldData) {
+                await redis.set(`artistDetails_${artistId}`, JSON.stringify(artistData));
+                continue;
+            }
+
+            const newWorks = Object.keys(artistData.body.illusts).filter(id => !oldData.body.illusts.hasOwnProperty(id));
+
+            for (let pid of newWorks) {
+                const url = `${pidAPI(pid)}&key=${keyValue}`;
+                await this.sendPixivDetails(e, url);
+            }
+
             await redis.set(`artistDetails_${artistId}`, JSON.stringify(artistData));
-            continue;
+        }
+    }
+
+    async sendPixivDetails(e, url) {
+        const details = await this.fetchDetails(url);
+
+        if (!details || !details.body) {
+            return;
         }
 
-        const newWorks = Object.keys(artistData.body.illusts).filter(id => !oldData.body.illusts.hasOwnProperty(id));
+        const body = details.body;
+        const imageUrls = Object.values(body.urls).map(url => `${url}?key=${keyValue}`);
 
-        if (newWorks.length > 0) {
-            const message = `画师${artists[artistId]}（${artistId}）的新的作品ID: ${newWorks.join(', ')}`;
-            messages.push(message);
-            console.log(message);
-        } else {
-            noNewWorks.push(artists[artistId]);
+        const tagList = body.tags.tags.map(tagObj => tagObj.tag);
+
+        const msgData = [
+            `id：${body.illustId}\n`,
+            `画师：${body.userName}（${body.userId}）\n`,
+            `是否ai：${body.aiType === 0 ? '否' : '是'}\n`,
+            `标题：${body.illustTitle}\n`,
+            `上传时间：${body.createDate}\n`, 
+            `喜欢数：${body.likeCount}\n`,
+            `收藏数：${body.bookmarkCount}\n`,
+            `观看数：${body.viewCount}\n`, 
+            `tag：${tagList.join(", ")}\n`
+        ];
+
+        const msgList = {
+            message: msgData.concat(imageUrls.map(url => segment.image(url))),
+            nickname: keyValue,
+            user_id: keyValue
+        };
+
+        const forwardMsg = await e.group.makeForwardMsg(msgList);
+        let forwardMsg_json = forwardMsg.data;
+
+        if (typeof(forwardMsg_json) === 'object') {
+            if (forwardMsg_json.app === 'com.tencent.multimsg' && forwardMsg_json.meta?.detail) {
+                let detail = forwardMsg_json.meta.detail;
+                let resid = detail.resid;
+                let fileName = detail.uniseq;
+                let preview = '';
+                for (let val of detail.news) {
+                    preview += `<title color="#777777" size="26">${val.text}</title>`;
+                }
+                forwardMsg.data = `<?xml version="1.0" encoding="utf-8"?><msg brief="[聊天记录]" m_fileName="${fileName}" action="viewMultiMsg" tSum="1" flag="3" m_resid="${resid}" serviceID="35" m_fileSize="0"><item layout="1"><title color="#000000" size="34">转发的聊天记录</title>${preview}<hr></hr><summary color="#808080" size="26">${detail.summary}</summary></item><source name="聊天记录"></source></msg>`;
+                forwardMsg.type = 'xml';
+                forwardMsg.id = 35;
+                await e.reply(forwardMsg);
+            }
         }
-
-        await redis.set(`artistDetails_${artistId}`, JSON.stringify(artistData));
     }
-
-    if (noNewWorks.length > 0) {
-        console.log(`画师${noNewWorks.join('、')}暂无新作品`);
-    }
-
-    if (firstTimeArtists.length > 0) {
-        console.log(`已保存画师${firstTimeArtists.join('、')}数据`);
-    }
-
-    return messages;
-}
-
 }

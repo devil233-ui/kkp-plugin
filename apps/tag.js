@@ -7,7 +7,7 @@ export class SetuImageFetcher extends plugin {
     constructor() {
         super({
             name: 'Setu Image Fetcher',
-            dsc: '通过标签和数量从Setu API获取图像',
+            dsc: '通过tag搜索蛇图',
             event: 'message',
             priority: '50',
             rule: [
@@ -32,7 +32,7 @@ export class SetuImageFetcher extends plugin {
             if (error.response && error.response.status === 403) {
                 throw new Error("暂无权使用");
             }
-            throw error;
+            return null;
         }
     }
 
@@ -45,7 +45,7 @@ export class SetuImageFetcher extends plugin {
             if (error.response && error.response.status === 403) {
                 throw new Error("暂无权使用");
             }
-            throw error;
+            return null;
         }
     }
 
@@ -69,8 +69,9 @@ export class SetuImageFetcher extends plugin {
 
         try {
             const imageDetailsList = await this.fetchSetuImages(tag, num, r18);
-            if (!imageDetailsList) {
-                await e.reply("无法获取图片信息");
+
+            if (!imageDetailsList || imageDetailsList.length === 0) {
+                await e.reply("无搜索结果");
                 return;
             }
 
@@ -83,8 +84,6 @@ export class SetuImageFetcher extends plugin {
         } catch (error) {
             if (error.message === "暂无权使用") {
                 await e.reply("暂无权使用");
-            } else {
-                await e.reply(`发生错误：${error.toString()}`);
             }
         }
     }

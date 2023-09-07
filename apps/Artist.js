@@ -68,8 +68,6 @@ export class ArtistDetails extends plugin {
         } catch (error) {
             if (error.message === "暂无权使用") {
                 await e.reply("暂无权使用");
-            } else {
-                await e.reply(`发生错误：${error.toString()}`);
             }
         }
     }
