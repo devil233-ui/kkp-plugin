@@ -2,7 +2,6 @@ import axios from 'axios';
 import plugin from '../../../lib/plugins/plugin.js';
 import { magnetURL } from '../config/api.js';
 
-
 export class MagnetLinkFetcher extends plugin {
     constructor() {
         super({
@@ -22,7 +21,7 @@ export class MagnetLinkFetcher extends plugin {
     async processMagnetLink(e) {
 		if (!e.isGroup) return;
         try {
-            const matchedMagnet = e.msg.match(/^#验车(magnet:.+)$/)[1];;
+            const matchedMagnet = e.msg.match(/^#验车(magnet:.+)$/)[1];
             const url = magnetURL(matchedMagnet);
             const response = await axios.get(url);
 
@@ -36,8 +35,12 @@ export class MagnetLinkFetcher extends plugin {
                     `文件大小：${(data.size / 1e9).toFixed(1)}g\n`
                 ];
 
+                const screenshotData = data.screenshots 
+                    ? data.screenshots.map(s => segment.image(s.screenshot)) 
+                    : ['该磁力无视频文件'];
+
                 const msgList = {
-                    message: msgData.concat(data.screenshots.map(s => segment.image(s.screenshot))),
+                    message: msgData.concat(screenshotData),
                     nickname: e.user_id.toString(),
                     user_id: e.user_id
                 };
@@ -69,4 +72,3 @@ export class MagnetLinkFetcher extends plugin {
         }
     }
 }
-
