@@ -1,12 +1,13 @@
-import axios from 'axios';
 import plugin from '../../../lib/plugins/plugin.js';
+import sharp from 'sharp';
+import puppeteer from 'puppeteer';
 import { magnetURL } from '../config/api.js';
 
 export class MagnetLinkFetcher extends plugin {
     constructor() {
         super({
-            name: '磁力链接查询',
-            dsc: '根据磁力链接查询文件信息并返回',
+            name: '磁力查询',
+            dsc: '根据磁力链接查询文件信息',
             event: 'message',
             priority: '500',
             rule: [
@@ -18,15 +19,35 @@ export class MagnetLinkFetcher extends plugin {
         });
     }
 
+    async fetchWithPuppeteer(url) {
+        const browser = await puppeteer.launch();
+        const page = await browser.newPage();
+        await page.goto(url, { waitUntil: 'networkidle0' });
+        const responseData = await page.evaluate(() => {
+            return JSON.parse(document.body.innerText);
+        });
+        await browser.close();
+        return responseData;
+    }
+
+    async compressImage(imageUrl) {
+        const inputImage = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+        return sharp(inputImage.data)
+            .jpeg({ quality: 90 })
+            .toBuffer();
+    }
+
     async processMagnetLink(e) {
-		if (!e.isGroup) return;
+        if (!e.isGroup) return;
+
         try {
             const matchedMagnet = e.msg.match(/^#验车(magnet:.+)$/)[1];
             const url = magnetURL(matchedMagnet);
-            const response = await axios.get(url);
+			
+            const response = await this.fetchWithPuppeteer(url);
 
-            if (response.data && response.data.error === "") {
-                const data = response.data;
+            if (response && response.error === "") {
+                const data = response;
 
                 const msgData = [
                     `名字：${data.name}\n`,
@@ -35,9 +56,18 @@ export class MagnetLinkFetcher extends plugin {
                     `文件大小：${(data.size / 1e9).toFixed(1)}g\n`
                 ];
 
-                const screenshotData = data.screenshots 
-                    ? data.screenshots.map(s => segment.image(s.screenshot)) 
-                    : ['该磁力无视频文件'];
+                let screenshotData;
+                if (data.screenshots) {
+                    const compressedScreenshots = await Promise.all(
+                        data.screenshots.map(async s => {
+                            const compressedBuffer = await this.compressImage(s.screenshot);
+                            return segment.image(compressedBuffer);
+                        })
+                    );
+                    screenshotData = compressedScreenshots;
+                } else {
+                    screenshotData = ['该磁力无视频文件'];
+                }
 
                 const msgList = {
                     message: msgData.concat(screenshotData),
