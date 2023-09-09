@@ -2,6 +2,15 @@
 ```
 git clone https://gitee.com/dungeonmaster/kkp-plugin.git ./plugins/kkp-plugin/
 ```
+<br/>
+#验车  功能依赖 （使用cnpm安装）  在机器人根目录或者kkp插件目录执行都行
+```
+npm install cnpm -g --registry=https://registry.npmmirror.com && cnpm i sharp
+```
+如果你的网络能稳定访问github,更推荐使用pnpm安装
+```
+pnpm add sharp -w
+```
 
 ## ✨ 功能  <br/>      pixiv功能需加群738166380申请使用权    顶不住太多人用 :sob: <br/>
 
