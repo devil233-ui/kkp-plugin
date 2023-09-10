@@ -19,20 +19,45 @@ export class MagnetLinkFetcher extends plugin {
         });
     }
 
-    async fetchWithPuppeteer(url) {
-        const browser = await puppeteer.launch();
-        const page = await browser.newPage();
-        await page.goto(url, { waitUntil: 'networkidle0' });
-        const responseData = await page.evaluate(() => {
-            return JSON.parse(document.body.innerText);
-        });
-        await browser.close();
-        return responseData;
-    }
+	async fetchWithPuppeteer(url) {
+		const browser = await puppeteer.launch();
+		const page = await browser.newPage();
+		
+		await page.setExtraHTTPHeaders({
+			'Accept': 'application/json, text/plain, */*',
+			'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
+			'Referer': 'https://whatslink.info/',
+			'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36 Edg/116.0.1938.69'
+		});
+		
+		await page.goto(url, { waitUntil: 'networkidle0' });
+		const responseData = await page.evaluate(() => {
+			return JSON.parse(document.body.innerText);
+		});
+		await browser.close();
+		return responseData;
+	}
+
+	async fetchImageWithPuppeteer(imageUrl) {
+		const browser = await puppeteer.launch();
+		const page = await browser.newPage();
+		
+		await page.setExtraHTTPHeaders({
+			'Accept': 'application/json, text/plain, */*',
+			'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
+			'Referer': 'https://whatslink.info/',
+			'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36 Edg/116.0.1938.69'
+		});
+
+		const response = await page.goto(imageUrl, { waitUntil: 'networkidle0' });
+		const buffer = await response.buffer();
+		await browser.close();
+		return buffer;
+	}
 
     async compressImage(imageUrl) {
-        const inputImage = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-        return sharp(inputImage.data)
+        const inputImage = await this.fetchImageWithPuppeteer(imageUrl);
+        return sharp(inputImage)
             .jpeg({ quality: 90 })
             .toBuffer();
     }
@@ -50,7 +75,7 @@ export class MagnetLinkFetcher extends plugin {
                 const data = response;
 
                 const msgData = [
-                    `名字：${data.name}\n`,
+                    `文件名字：${data.name}\n`,
                     `文件类型：${data.file_type}\n`,
                     `文件数量：${data.count}\n`,
                     `文件大小：${(data.size / 1e9).toFixed(1)}g\n`
