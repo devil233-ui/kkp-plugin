@@ -1,7 +1,7 @@
 import plugin from '../../../lib/plugins/plugin.js';
 import sharp from 'sharp';
 import puppeteer from 'puppeteer';
-import { magnetURL } from '../config/api.js';
+import { magnetURL, getFrameworkName } from '../config/api.js';
 
 export class MagnetLinkFetcher extends plugin {
     constructor() {
@@ -17,26 +17,36 @@ export class MagnetLinkFetcher extends plugin {
                 }
             ]
         });
+		this.frameworkName = getFrameworkName();
     }
 
-	async fetchWithPuppeteer(url) {
-		const browser = await puppeteer.launch();
-		const page = await browser.newPage();
-		
-		await page.setExtraHTTPHeaders({
-			'Accept': 'application/json, text/plain, */*',
-			'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
-			'Referer': 'https://whatslink.info/',
-			'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36 Edg/116.0.1938.69'
-		});
-		
-		await page.goto(url, { waitUntil: 'networkidle0' });
-		const responseData = await page.evaluate(() => {
-			return JSON.parse(document.body.innerText);
-		});
-		await browser.close();
-		return responseData;
-	}
+    async fetchWithPuppeteer(url) {
+        const browser = await puppeteer.launch();
+        const page = await browser.newPage();
+
+        await page.setExtraHTTPHeaders({
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
+            'Referer': 'https://whatslink.info/',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36 Edg/116.0.1938.69'
+        });
+        
+        await page.goto(url, { waitUntil: 'networkidle0' });
+
+        if (this.frameworkName === 'miao-yunzai') {
+            // 如果框架名为miao-yunzai，从HTML中筛选JSON
+            const jsonContent = await page.$eval('div[hidden="true"]', div => div.textContent);
+            await browser.close();
+            return JSON.parse(jsonContent);
+        } else {
+            // 否则直接解析JSON
+            const responseData = await page.evaluate(() => {
+                return JSON.parse(document.body.innerText);
+            });
+            await browser.close();
+            return responseData;
+        }
+    }
 
 	async fetchImageWithPuppeteer(imageUrl) {
 		const browser = await puppeteer.launch();
