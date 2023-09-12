@@ -131,7 +131,7 @@ export class SetuImageFetcher extends plugin {
                 const sentMessage = await e.reply(forwardMsg);
                 setTimeout(() => {
                     e.group.recallMsg(sentMessage.message_id);
-                }, 30000);
+                }, 40000);
             }
         }
     }

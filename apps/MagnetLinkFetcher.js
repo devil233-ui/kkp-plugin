@@ -19,6 +19,12 @@ export class MagnetLinkFetcher extends plugin {
         });
 		this.frameworkName = getFrameworkName();
     }
+	
+	async _launchBrowser() {
+		return await puppeteer.launch({
+			args: ['--no-sandbox', '--disable-setuid-sandbox']
+		});
+	}
 
     async fetchWithPuppeteer(url) {
         const browser = await puppeteer.launch();
@@ -126,7 +132,10 @@ export class MagnetLinkFetcher extends plugin {
                         forwardMsg.type = 'xml';
                         forwardMsg.id = 35;
 
-                        await e.reply(forwardMsg);
+						const Message = await e.reply(forwardMsg);
+						setTimeout(() => {
+							e.group.recallMsg(Message.message_id);
+						}, 60000);
                     }
                 }
             } else {

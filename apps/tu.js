@@ -5,8 +5,8 @@ import { segment } from "icqq";
 export class CosImageFetcher extends plugin {
     constructor() {
         super({
-            name: 'p站图',
-            dsc: '根据tag搜索p站图',
+            name: '23图',
+            dsc: '23图',
             event: 'message',
             priority: '60',
             rule: [

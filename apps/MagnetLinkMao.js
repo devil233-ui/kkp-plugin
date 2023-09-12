@@ -1,4 +1,3 @@
-import { segment } from "icqq";
 import plugin from '../../../lib/plugins/plugin.js'
 import puppeteer from 'puppeteer';
 
@@ -6,13 +5,13 @@ export class MagnetLink extends plugin {
     constructor() {
         super(
             {
-                name: '搜磁力',
-                dsc: '获取磁力链接',
+                name: '磁力猫搜索',
+                dsc: '磁力猫搜索',
                 event: 'message',
                 priority: '77',
                 rule: [
                     {
-                        reg: '^#?搜磁力(.*)$',
+                        reg: '^#?磁力猫(.*)$',
                         fnc: 'processMagnetLink'
                     },
                     {
@@ -26,17 +25,17 @@ export class MagnetLink extends plugin {
 
     async magnetHelp(e) {
 		if (!e.isGroup) return;
-        let helpText = "搜磁力功能帮助：\n"
-        helpText += "输入格式：搜磁力 [搜索内容] [文件类型] [排序方式] [结果数量]\n"
-        helpText += "文件类型：全部, 影视, 音乐, 图像, 文档, 压缩包, 安装包, 其他\n"
-        helpText += "排序方式：相关度, 文件大小, 添加时间, 热度, 最近下载\n"
-        helpText += "默认搜索全部文件，相关度排序，返回前10个"
+        let helpText = "#搜磁力更改为#磁力猫（内容）和#磁力草（内容）\n\n"
+        helpText += "#磁力猫支持搜索格式  #磁力猫[搜索内容] [全部/影视/音乐/图像/文档/压缩包/安装包/其他] [相关度/文件大小/添加时间/热度/最近下载] [结果数量]\n"
+        helpText += "如#磁力猫ipx  #磁力猫ipx 全部 热度 20  #磁力猫ipx 影视 添加时间\n\n"
+        helpText += "#磁力草支持搜索格式  #磁力草[搜索内容] [热度/大小]\n"
+        helpText += "如#磁力草ipx  #磁力草ipx 热度  #磁力草ipx 大小"
         await this.reply(helpText);
     }
 
     async processMagnetLink(e) {
 		if (!e.isGroup) return;
-        let match = e.msg.match(/^#?搜磁力\s*(\S+)(\s+(\S+))?(\s+(\S+))?(\s+(\d+))?$/);
+        let match = e.msg.match(/^#?磁力猫\s*(\S+)(\s+(\S+))?(\s+(\S+))?(\s+(\d+))?$/);
         if (!match) {
             return;
         }
@@ -85,10 +84,7 @@ export class MagnetLink extends plugin {
                         results.push({user_id: e.user_id, nickname: e.user_id, message: `${title}\n\n${magnetLink}\n\n添加时间：${addedTime}\n大小：${size}\n最近下载：${recentDownload}\n热度：${heat}`});
                     }
                     const forwardMsg = await e.group.makeForwardMsg(results);
-                    const sentMessage = await this.reply(forwardMsg);
-                    setTimeout(() => {
-                        e.group.recallMsg(sentMessage.message_id);
-                    }, 100000);
+                    await this.reply(forwardMsg);
                     await browser.close();
                     return;
                 } else {
