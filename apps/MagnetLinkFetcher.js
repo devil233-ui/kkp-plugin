@@ -27,7 +27,7 @@ export class MagnetLinkFetcher extends plugin {
 	}
 
     async fetchWithPuppeteer(url) {
-        const browser = await puppeteer.launch();
+        const browser = await this._launchBrowser();
         const page = await browser.newPage();
 
         await page.setExtraHTTPHeaders({
@@ -55,7 +55,7 @@ export class MagnetLinkFetcher extends plugin {
     }
 
 	async fetchImageWithPuppeteer(imageUrl) {
-		const browser = await puppeteer.launch();
+		const browser = await this._launchBrowser();
 		const page = await browser.newPage();
 		
 		await page.setExtraHTTPHeaders({
