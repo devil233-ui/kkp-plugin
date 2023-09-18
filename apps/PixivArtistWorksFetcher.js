@@ -1,20 +1,22 @@
 import plugin from '../../../lib/plugins/plugin.js';
 import axios from 'axios';
-import { segment } from "icqq";
 import { pid, user, keyValue } from '../config/api.js';
-
 
 export class PixivArtistWorksFetcher extends plugin {
     constructor() {
         super({
-            name: 'Pixiv Artist Works Fetcher',
-            dsc: 'Fetches artist works using Artist ID',
+            name: 'p站画师id获取图片',
+            dsc: 'p站画师id获取图片',
             event: 'message',
             priority: '50',
             rule: [
                 {
                     reg: '^#来(\\d+)张(\\d+)作品$',
-                    fnc: 'processArtistWorks'
+                    fnc: 'processLatestArtistWorks'
+                },
+                {
+                    reg: '^#?随机(\\d+)张(\\d+)作品$',
+                    fnc: 'processRandomArtistWorks'
                 }
             ]
         });
@@ -44,9 +46,17 @@ export class PixivArtistWorksFetcher extends plugin {
         }
     }
 
-    async processArtistWorks(e) {
-		if (!e.isGroup) return;
-        const match = e.msg.match(/^#来(\d+)张(\d+)作品$/);
+    async processLatestArtistWorks(e) {
+        await this._processArtistWorks(e, false);
+    }
+
+    async processRandomArtistWorks(e) {
+        await this._processArtistWorks(e, true);
+    }
+
+    async _processArtistWorks(e, isRandom) {
+        if (!e.isGroup) return;
+        const match = e.msg.match(isRandom ? /^#?随机(\d+)张(\d+)作品$/ : /^#来(\d+)张(\d+)作品$/);
         if (!match) return;
 
         const num = parseInt(match[1]);
@@ -65,19 +75,40 @@ export class PixivArtistWorksFetcher extends plugin {
                 return;
             }
 
-            const workIDs = Object.keys(artistData.body.illusts).reverse().slice(0, num);  // 取最新的作品ID
+            let workIDs;
+            const allWorkIDs = Object.keys(artistData.body.illusts).reverse();
 
-            for (const workId of workIDs) {
-                const workDetails = await this.fetchWorkDetails(workId);
-                if (workDetails && !workDetails.error) {
-                    await this.sendWorkDetails(e, workDetails);
-                }
+            if (isRandom) {
+                workIDs = this.shuffleArray(allWorkIDs).slice(0, num);
+            } else {
+                workIDs = allWorkIDs.slice(0, num);
             }
+
+            // 使用asyncio.gather并行处理所有作品ID
+            const tasks = workIDs.map(workId => this.processWorkDetail(e, workId));
+            await Promise.all(tasks);
+
         } catch (error) {
             if (error.message === "暂无权使用") {
                 await e.reply("暂无权使用");
             }
         }
+    }
+
+    async processWorkDetail(e, workId) {
+        const workDetails = await this.fetchWorkDetails(workId);
+        if (workDetails && !workDetails.error) {
+            await this.sendWorkDetails(e, workDetails);
+        }
+    }
+
+    // 一个用于随机化数组的辅助方法
+    shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
     }
 
     async sendWorkDetails(e, details) {
