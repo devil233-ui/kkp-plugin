@@ -37,7 +37,10 @@ export class MagnetLink extends plugin {
             }
         }
         const url = `http://124.220.69.229:3535/list.php/?name=${encodeURIComponent(userInput)}&page=1${orderParam}`;
-        const browser = await puppeteer.launch();
+        const browser = await puppeteer.launch({
+			args: ['--no-sandbox', '--disable-setuid-sandbox']
+		});
+
         const page = await browser.newPage();
 
         try {
