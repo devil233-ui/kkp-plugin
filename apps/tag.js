@@ -57,36 +57,40 @@ export class SetuImageFetcher extends plugin {
         return this._processSetuImages(e, 0);
     }
 
-    async _processSetuImages(e, r18) {
+	async _processSetuImages(e, r18) {
 		if (!e.isGroup) return;
-        const [, numStr, tag] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
-        const num = parseInt(numStr);
+		const [, numStr, tag] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
+		const num = parseInt(numStr);
 
-        if (num > 5) {
-            await e.reply("一次只能看5张哦");
-            return;
-        }
+		if (num > 5) {
+			await e.reply("一次只能看5张哦");
+			return;
+		}
 
-        try {
-            const imageDetailsList = await this.fetchSetuImages(tag, num, r18);
+		try {
+			const imageDetailsList = await this.fetchSetuImages(tag, num, r18);
 
-            if (!imageDetailsList || imageDetailsList.length === 0) {
-                await e.reply("无搜索结果");
-                return;
-            }
+			if (!imageDetailsList || imageDetailsList.length === 0) {
+				await e.reply("无搜索结果");
+				return;
+			}
 
-            for (const imageDetails of imageDetailsList) {
-                const pixivDetails = await this.fetchPixivImageDetails(imageDetails.pid);
-                if (pixivDetails && pixivDetails.body) {
-                    await this.sendPixivDetails(e, pixivDetails.body);
-                }
-            }
-        } catch (error) {
-            if (error.message === "暂无权使用") {
-                await e.reply("暂无权使用");
-            }
-        }
-    }
+			const tasks = imageDetailsList.map(imageDetails => this.processImageDetail(e, imageDetails));
+			await asyncio.gather(...tasks);
+
+		} catch (error) {
+			if (error.message === "暂无权使用") {
+				await e.reply("暂无权使用");
+			}
+		}
+	}
+
+	async processImageDetail(e, imageDetails) {
+		const pixivDetails = await this.fetchPixivImageDetails(imageDetails.pid);
+		if (pixivDetails && pixivDetails.body) {
+			await this.sendPixivDetails(e, pixivDetails.body);
+		}
+	}
 
     async sendPixivDetails(e, body) {
 		if (!e.isGroup) return;
