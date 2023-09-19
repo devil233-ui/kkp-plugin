@@ -1,100 +1,84 @@
 import plugin from '../../../lib/plugins/plugin.js';
 import axios from 'axios';
-import { segment } from "icqq";
-import { pid, setu, keyValue } from '../config/api.js';
+import { pid, keyValue, tag as fetchTag } from '../config/api.js';
 
 export class SetuImageFetcher extends plugin {
     constructor() {
         super({
-            name: 'Setu Image Fetcher',
-            dsc: '通过tag搜索蛇图',
+            name: 'Setu Image Fetch',
+            dsc: '通过tag搜索图',
             event: 'message',
-            priority: '50',
+            priority: '500',
             rule: [
                 {
-                    reg: '^#来(\\d+)张(.*?)图$',
-                    fnc: 'processSetuImagesWithR18'
-                },
-                {
-                    reg: '^来(\\d+)张(.*?)图$',
-                    fnc: 'processSetuImagesWithoutR18'
+                    reg: '^#?来(\\d+)张(.*?)图$',
+                    fnc: '_processSetuImages'
                 }
             ]
         });
     }
 
-    async fetchSetuImages(tag, num, r18) {
-        const apiUrl = setu(tag, num, r18);
+    async fetchPixivImageDetails(pidValue) {
+        const apiUrl = pid(pidValue);
         try {
             const response = await axios.get(apiUrl);
-            return response.data.data;
-        } catch (error) {
-            if (error.response && error.response.status === 403) {
-                throw new Error("暂无权使用");
-            }
-            return null;
-        }
-    }
-
-    async fetchPixivImageDetails(pidValue) {
-        const url = `${pid(pidValue)}&key=${keyValue}`;
-        try {
-            const response = await axios.get(url);
             return response.data;
         } catch (error) {
-            if (error.response && error.response.status === 403) {
-                throw new Error("暂无权使用");
-            }
             return null;
         }
     }
 
-    async processSetuImagesWithR18(e) {
-        return this._processSetuImages(e, 1);
+    async fetchTagSearchResults(tagValue) {
+        const apiUrl = fetchTag(tagValue);
+        try {
+            const response = await axios.get(apiUrl);
+            return response.data.body.illustManga.data.map(item => item.id);
+        } catch (error) {
+            return null;
+        }
     }
 
-    async processSetuImagesWithoutR18(e) {
-        return this._processSetuImages(e, 0);
+    getRandomIds(ids, count) {
+        const shuffled = ids.sort(() => 0.5 - Math.random());
+        return shuffled.slice(0, count);
     }
 
-	async _processSetuImages(e, r18) {
-		if (!e.isGroup) return;
-		const [, numStr, tag] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
-		const num = parseInt(numStr);
+    async _processSetuImages(e) {
+        if (!e.isGroup) return;
+        
+        const [, numStr, tag] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
+        const num = parseInt(numStr);
 
-		if (num > 5) {
-			await e.reply("一次只能看5张哦");
-			return;
-		}
+        if (num > 5) {
+            await e.reply("你想冲死吗？");
+            return;
+        }
 
-		try {
-			const imageDetailsList = await this.fetchSetuImages(tag, num, r18);
+        const idsList = await this.fetchTagSearchResults(tag);
+        if (!idsList || idsList.length === 0) {
+            await e.reply("没有这种图啊，涩批！");
+            return;
+        }
+        
+        const selectedPids = this.getRandomIds(idsList, num);
 
-			if (!imageDetailsList || imageDetailsList.length === 0) {
-				await e.reply("无搜索结果");
-				return;
-			}
+	const tasks = selectedPids.map(pid => this.processImageDetail(e, { pid }));
+	await Promise.all(tasks);
 
-			const tasks = imageDetailsList.map(imageDetails => this.processImageDetail(e, imageDetails));
-			await asyncio.gather(...tasks);
+    }
 
-		} catch (error) {
-			if (error.message === "暂无权使用") {
-				await e.reply("暂无权使用");
-			}
-		}
-	}
-
-	async processImageDetail(e, imageDetails) {
-		const pixivDetails = await this.fetchPixivImageDetails(imageDetails.pid);
-		if (pixivDetails && pixivDetails.body) {
-			await this.sendPixivDetails(e, pixivDetails.body);
-		}
-	}
-
+    async processImageDetail(e, imageDetails) {
+        const pixivDetails = await this.fetchPixivImageDetails(imageDetails.pid);
+        if (pixivDetails && pixivDetails.body) {
+            await this.sendPixivDetails(e, pixivDetails.body);
+        } else {
+            await e.reply("Failed to get Pixiv details.");
+        }
+    }
+	
     async sendPixivDetails(e, body) {
 		if (!e.isGroup) return;
-        const imageUrls = Object.values(body.urls).map(url => `${url}?key=${keyValue}`); // 在URL后添加key
+        const imageUrls = Object.values(body.urls).map(url => `${url}?key=${keyValue}`);
 
         const tagList = body.tags.tags.map(tagObj => tagObj.tag);
 
