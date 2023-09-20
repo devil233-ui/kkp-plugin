@@ -1,6 +1,8 @@
 import plugin from '../../../lib/plugins/plugin.js';
 import sharp from 'sharp';
 import puppeteer from 'puppeteer';
+import fs from 'fs';
+import YAML from 'yaml';
 import { magnetURL, getFrameworkName } from '../config/api.js';
 
 export class MagnetLinkFetcher extends plugin {
@@ -18,6 +20,12 @@ export class MagnetLinkFetcher extends plugin {
             ]
         });
 		this.frameworkName = getFrameworkName();
+    }
+	
+	getRecallConfig() {
+    const path = './plugins/kkp-plugin/config/recall.yaml';
+    const fileContents = fs.readFileSync(path, 'utf8');
+    return YAML.parse(fileContents);
     }
 	
 	async _launchBrowser() {
@@ -128,14 +136,24 @@ export class MagnetLinkFetcher extends plugin {
                         for (let val of detail.news) {
                             preview += `<title color="#777777" size="26">${val.text}</title>`;
                         }
-                        forwardMsg.data = `<?xml version="1.0" encoding="utf-8"?><msg brief="[聊天记录]" m_fileName="${fileName}" action="viewMultiMsg" tSum="1" flag="3" m_resid="${resid}" serviceID="35" m_fileSize="0"><item layout="1"><title color="#000000" size="34">转发的聊天记录</title>${preview}<hr></hr><summary color="#808080" size="26">${detail.summary}</summary></item><source name="聊天记录"></source></msg>`;
-                        forwardMsg.type = 'xml';
-                        forwardMsg.id = 35;
+						forwardMsg.data = `<?xml version="1.0" encoding="utf-8"?><msg brief="[聊天记录]" m_fileName="${fileName}" action="viewMultiMsg" tSum="1" flag="3" m_resid="${resid}" serviceID="35" m_fileSize="0"><item layout="1"><title color="#000000" size="34">转发的聊天记录</title>${preview}<hr></hr><summary color="#808080" size="26">${detail.summary}</summary></item><source name="聊天记录"></source></msg>`;
+						forwardMsg.type = 'xml';
+						forwardMsg.id = 35;
+						
+						forwardMsg.data = forwardMsg.data
+							.replace('<?xml version="1.0" encoding="utf-8"?>', '<?xml version="1.0" encoding="UTF-8"?>')
+							.replace(/\n/g, '')
+							.replace(/<title color="#777777" size="26">(.+?)<\/title>/g, '___')
+							.replace(/___+/, `<title color="#777777" size="26">${title}</title>`);
 
 						const Message = await e.reply(forwardMsg);
-						setTimeout(() => {
-							e.group.recallMsg(Message.message_id);
-						}, 60000);
+						
+						const recallConfig = this.getRecallConfig();
+						if (recallConfig.recall) {
+							setTimeout(() => {
+								e.group.recallMsg(Message.message_id);
+							}, recallConfig.time);
+						}
                     }
                 }
             } else {
