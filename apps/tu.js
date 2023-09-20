@@ -1,7 +1,6 @@
 import plugin from '../../../lib/plugins/plugin.js';
 import axios from 'axios';
-import fs from 'fs';
-import YAML from 'yaml';
+import { segment } from "icqq";
 
 export class CosImageFetcher extends plugin {
     constructor() {
@@ -22,13 +21,7 @@ export class CosImageFetcher extends plugin {
             ]
         });
     }
-	
-	getRecallConfig() {
-    const path = './plugins/kkp-plugin/config/recall.yaml';
-    const fileContents = fs.readFileSync(path, 'utf8');
-    return YAML.parse(fileContents);
-    }
-	
+
     async fetchImage(url) {
         return axios.get(url, {
             responseType: 'arraybuffer',
@@ -93,12 +86,9 @@ export class CosImageFetcher extends plugin {
                                 .replace(/___+/, `<title color="#777777" size="26">${summaryTitle}</title>`);
 
                             const sentMessage = await e.reply(forwardMsg);
-							
-							const recallConfig = this.getRecallConfig();
-							if (recallConfig.recall) {
-							setTimeout(() => {
-								e.group.recallMsg(sentMessage.message_id);
-							}, recallConfig.time);
+                            setTimeout(() => {
+                                e.group.recallMsg(sentMessage.message_id);
+                            }, 30000);
                         }
                     }
                 }
