@@ -160,11 +160,13 @@ export class PixivArtistWorksFetcher extends plugin {
 				forwardMsg.type = 'xml';
 				forwardMsg.id = 35;
 				
+				let summaryTitle = `给你kkp吧`;
+
 				forwardMsg.data = forwardMsg.data
 					.replace('<?xml version="1.0" encoding="utf-8"?>', '<?xml version="1.0" encoding="UTF-8"?>')
 					.replace(/\n/g, '')
 					.replace(/<title color="#777777" size="26">(.+?)<\/title>/g, '___')
-					.replace(/___+/, `<title color="#777777" size="26">${title}</title>`);
+					.replace(/___+/, `<title color="#777777" size="26">${summaryTitle}</title>`);
 
                 const sentMessage = await e.reply(forwardMsg);
 				
