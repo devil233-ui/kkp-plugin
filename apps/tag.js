@@ -1,5 +1,7 @@
 import plugin from '../../../lib/plugins/plugin.js';
 import axios from 'axios';
+import fs from 'fs';
+import YAML from 'yaml';
 import { pid, keyValue, tag as fetchTag } from '../config/api.js';
 
 export class SetuImageFetcher extends plugin {
@@ -16,6 +18,12 @@ export class SetuImageFetcher extends plugin {
                 }
             ]
         });
+    }
+
+    getRecallConfig() {
+        const path = './plugins/kkp-plugin/config/recall.yaml';
+        const fileContents = fs.readFileSync(path, 'utf8');
+        return YAML.parse(fileContents);
     }
 
     async fetchPixivImageDetails(pidValue) {
@@ -124,11 +132,15 @@ export class SetuImageFetcher extends plugin {
 					.replace(/<title color="#777777" size="26">(.+?)<\/title>/g, '___')
 					.replace(/___+/, `<title color="#777777" size="26">${summaryTitle}</title>`);
 
+                const recallConfig = this.getRecallConfig();
+
                 const sentMessage = await e.reply(forwardMsg);
-                setTimeout(() => {
-                    e.group.recallMsg(sentMessage.message_id);
-                }, 40000);
-            }
+                if (recallConfig.recall) {
+                    setTimeout(() => {
+                        e.group.recallMsg(sentMessage.message_id);
+                    }, recallConfig.time);
+                }
         }
     }
+  }
 }
