@@ -20,9 +20,9 @@ export class kkp extends plugin {
 
     async sendKKPImage() {
         const imagePath = _path + '/plugins/kkp-plugin/config/kkp.jpg';
-        let msg = [
-            segment.image(file://imagePath),
-        ];
+		let msg = [
+			segment.image(`file://${imagePath}`),
+		];
         this.e.reply(msg);
         return true;
     }

@@ -32,7 +32,7 @@ export class OttoVoice extends plugin {
             // 使用querystring模块将请求体转换为x-www-form-urlencoded格式
             const data = querystring.stringify({ text: sanitizedContent });
 
-            const response = await axios.post('\x31\x36\x35\x2e\x31\x35\x34\x2e\x31\x33\x33\x2e\x31\x30\x36\x3a\x38\x39\x38\x39/make'); data, {
+            const response = await axios.post('\x31\x36\x35\x2e\x31\x35\x34\x2e\x31\x33\x33\x2e\x31\x30\x36\x3a\x38\x39\x38\x39/make', data, {
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                     'User-Agent': 'PostmanRuntime/7.33.0',
