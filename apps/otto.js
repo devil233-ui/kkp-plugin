@@ -42,7 +42,7 @@ export class OttoVoice extends plugin {
             });
 
             if (response.data && response.data.id) {
-                const audioUrl = `http://165.154.133.106:8990/${response.data.id}.wav`;
+                const audioUrl = `http://165.154.133.106:8989/${response.data.id}.wav`;
                 e.reply(segment.record(audioUrl, 0, false));
             } else {
                 e.reply("出错了，请稍后再试。");
