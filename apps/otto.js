@@ -32,7 +32,7 @@ export class OttoVoice extends plugin {
             // 使用querystring模块将请求体转换为x-www-form-urlencoded格式
             const data = querystring.stringify({ text: sanitizedContent });
 
-            const response = await axios.post('\x31\x36\x35\x2e\x31\x35\x34\x2e\x31\x33\x33\x2e\x31\x30\x36\x3a\x38\x39\x38\x39/make', data, {
+            const response = await axios.post(`\x31\x36\x35\x2e\x31\x35\x34\x2e\x31\x33\x33\x2e\x31\x30\x36:8989/make`, data, {...});
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                     'User-Agent': 'PostmanRuntime/7.33.0',
@@ -42,7 +42,7 @@ export class OttoVoice extends plugin {
             });
 
             if (response.data && response.data.id) {
-                const audioUrl = `\x31\x36\x35\x2e\x31\x35\x34\x2e\x31\x33\x33\x2e\x31\x30\x36\x3a\x38\x39\x39\x30/${response.data.id}.wav`;
+                const audioUrl = `\x31\x36\x35\x2e\x31\x35\x34\x2e\x31\x33\x33\x2e\x31\x30\x36:8989/${response.data.id}.wav`;
                 e.reply(segment.record(audioUrl, 0, false));
             } else {
                 e.reply("出错了，请稍后再试。");
