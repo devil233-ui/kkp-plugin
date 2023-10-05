@@ -30,7 +30,8 @@ export class MagnetLinkFetcher extends plugin {
 	
 	async _launchBrowser() {
 		return await puppeteer.launch({
-			args: ['--no-sandbox', '--disable-setuid-sandbox']
+			args: ['--no-sandbox', '--disable-setuid-sandbox'],
+			ignoreHTTPSErrors: true // 忽略HTTPS错误
 		});
 	}
 
@@ -47,19 +48,19 @@ export class MagnetLinkFetcher extends plugin {
         
         await page.goto(url, { waitUntil: 'networkidle0' });
 
-        if (this.frameworkName === 'miao-yunzai') {
-            // 如果框架名为miao-yunzai，从HTML中筛选JSON
-            const jsonContent = await page.$eval('div[hidden="true"]', div => div.textContent);
-            await browser.close();
-            return JSON.parse(jsonContent);
-        } else {
-            // 否则直接解析JSON
-            const responseData = await page.evaluate(() => {
-                return JSON.parse(document.body.innerText);
-            });
-            await browser.close();
-            return responseData;
-        }
+		try {
+			// 尝试从HTML中筛选JSON
+			const jsonContent = await page.$eval('div[hidden="true"]', div => div.textContent);
+			await browser.close();
+			return JSON.parse(jsonContent);
+		} catch (error) {
+			// 如果上面的代码失败了（例如选择器没有找到元素），则直接尝试解析整个页面内容
+			const responseData = await page.evaluate(() => {
+				return JSON.parse(document.body.innerText);
+			});
+			await browser.close();
+			return responseData;
+		}
     }
 
 	async fetchImageWithPuppeteer(imageUrl) {
