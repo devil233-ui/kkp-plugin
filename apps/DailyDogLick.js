@@ -1,4 +1,3 @@
-import { segment } from "icqq";
 import plugin from '../../../lib/plugins/plugin.js'
 import https from 'https';
 
