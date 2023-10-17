@@ -1,6 +1,5 @@
 import plugin from '../../../lib/plugins/plugin.js';
 import axios from 'axios';
-import { segment } from "icqq";
 
 export class DailyRankingFetcher extends plugin {
     constructor() {
