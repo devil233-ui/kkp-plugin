@@ -13,7 +13,7 @@ export class SetuImageFetcher extends plugin {
             priority: '500',
             rule: [
                 {
-                    reg: '^#?来(%%d+)张(.*?)图$',
+                    reg: '^#?来(\\d+)张(.*?)图$',
                     fnc: '_processSetuImages'
                 }
             ]
@@ -120,7 +120,7 @@ export class SetuImageFetcher extends plugin {
                     forwardMsg.data = forwardMsg.data
                         .replace('<?xml version="1.0" encoding="utf-8"?>', '<?xml version="1.0" encoding="UTF-8"?>')
                         .replace(/%n/g, '')
-                        .replace(/<title color="#777777" size="26">(.+?)<%/title>/g, '___')
+                        .replace(/<title color="#777777" size="26">(.+?)<\/title>/g, '___')
                         .replace(/___+/, `<title color="#777777" size="26">${summaryTitle}</title>`);
 
                     const recallConfig = this.getRecallConfig();
