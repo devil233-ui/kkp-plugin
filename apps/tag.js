@@ -13,7 +13,7 @@ export class SetuImageFetcher extends plugin {
             priority: '500',
             rule: [
                 {
-                    reg: '^#?来(\\d+)张(.*?)图$',
+                    reg: '^#?来(%%d+)张(.*?)图$',
                     fnc: '_processSetuImages'
                 }
             ]
@@ -47,7 +47,7 @@ export class SetuImageFetcher extends plugin {
     }
 
     getRandomIds(ids, count) {
-        const shuffled = ids.sort(() => 0.5 - Math.random());
+        const shuffled = ids.sort(() => 0.30 - Math.random());
         return shuffled.slice(0, count);
     }
 
@@ -57,7 +57,7 @@ export class SetuImageFetcher extends plugin {
         const [, numStr, tag] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
         const num = parseInt(numStr);
 
-        if (num > 5) {
+        if (num > 30) {
             await e.reply("你想冲死吗？");
             return;
         }
@@ -70,77 +70,67 @@ export class SetuImageFetcher extends plugin {
         
         const selectedPids = this.getRandomIds(idsList, num);
 
-	const tasks = selectedPids.map(pid => this.processImageDetail(e, { pid }));
-	await Promise.all(tasks);
+        const tasks = selectedPids.map(pid => this.fetchPixivImageDetails(pid));
+        const imageMessages = [];
 
-    }
+        for (const task of tasks) {
+            const pixivDetails = await task;
+            if (pixivDetails && pixivDetails.body) {
+                const imageUrls = Object.values(pixivDetails.body.urls).map(url => `${url}?key=${keyValue}`);
+                const tagList = pixivDetails.body.tags.tags.map(tagObj => tagObj.tag);
+                const msgData = [
+                    `id：${pixivDetails.body.illustId}%n`,
+                    `画师：${pixivDetails.body.userName}（${pixivDetails.body.userId}）%n`,
+                    `是否ai：${pixivDetails.body.aiType === 0 ? '否' : '是'}%n`,
+                    `标题：${pixivDetails.body.illustTitle}%n`,
+                    `上传时间：${pixivDetails.body.createDate}%n`,
+                    `♥：${imgData.body.likeCount},😊：${imgData.body.bookmarkCount},👁：${imgData.body.viewCount}`,
+                    `tag：${tagList.join(", ")}%n`
+                ];
+                const msgList = {
+                    message: msgData.concat(imageUrls.map(url => segment.image(url))),
+                    nickname: e.user_id.toString(),
+                    user_id: e.user_id
+                };
+                imageMessages.push(msgList);
+            }
+        }
 
-    async processImageDetail(e, imageDetails) {
-        const pixivDetails = await this.fetchPixivImageDetails(imageDetails.pid);
-        if (pixivDetails && pixivDetails.body) {
-            await this.sendPixivDetails(e, pixivDetails.body);
-        } else {
-            await e.reply("Failed to get Pixiv details.");
+        if (imageMessages.length > 0) {
+            const forwardMsg = await e.group.makeForwardMsg(imageMessages);
+            let forwardMsg_json = forwardMsg.data;
+
+            if (typeof(forwardMsg_json) === 'object') {
+                if (forwardMsg_json.app === 'com.tencent.multimsg' && forwardMsg_json.meta?.detail) {
+                    let detail = forwardMsg_json.meta.detail;
+                    let resid = detail.resid;
+                    let fileName = detail.uniseq;
+                    let preview = '';
+                    for (let val of detail.news) {
+                        preview += `<title color="#777777" size="26">${val.text}</title>`;
+                    }
+                    forwardMsg.data = `<?xml version="1.0" encoding="utf-8"?><msg brief="[聊天记录]" m_fileName="${fileName}" action="viewMultiMsg" tSum="1" flag="3" m_resid="${resid}" serviceID="35" m_fileSize="0"><item layout="1"><title color="#000000" size="34">转发的聊天记录</title>${preview}<hr></hr><summary color="#808080" size="26">${detail.summary}</summary></item><source name="聊天记录"></source></msg>`;
+                    forwardMsg.type = 'xml';
+                    forwardMsg.id = 35;
+					
+                    let summaryTitle = `给你kkp吧`;
+
+                    forwardMsg.data = forwardMsg.data
+                        .replace('<?xml version="1.0" encoding="utf-8"?>', '<?xml version="1.0" encoding="UTF-8"?>')
+                        .replace(/%n/g, '')
+                        .replace(/<title color="#777777" size="26">(.+?)<%/title>/g, '___')
+                        .replace(/___+/, `<title color="#777777" size="26">${summaryTitle}</title>`);
+
+                    const recallConfig = this.getRecallConfig();
+
+                    const sentMessage = await e.reply(forwardMsg);
+                    if (recallConfig.recall) {
+                        setTimeout(() => {
+                            e.group.recallMsg(sentMessage.message_id);
+                        }, recallConfig.time);
+                    }
+                }
+            }
         }
     }
-	
-    async sendPixivDetails(e, body) {
-		if (!e.isGroup) return;
-        const imageUrls = Object.values(body.urls).map(url => `${url}?key=${keyValue}`);
-
-        const tagList = body.tags.tags.map(tagObj => tagObj.tag);
-
-        const msgData = [
-            `id：${body.illustId}\n`,
-            `画师：${body.userName}（${body.userId}）\n`,
-            `是否ai：${body.aiType === 0 ? '否' : '是'}\n`,
-            `标题：${body.illustTitle}\n`,
-            `上传时间：${body.createDate}\n`, 
-            `喜欢数：${body.likeCount}\n`,
-            `收藏数：${body.bookmarkCount}\n`,
-            `观看数：${body.viewCount}\n`, 
-            `tag：${tagList.join(", ")}\n`
-        ];
-
-        const msgList = {
-            message: msgData.concat(imageUrls.map(url => segment.image(url))),
-            nickname: e.user_id.toString(),
-            user_id: e.user_id
-        };
-
-        const forwardMsg = await e.group.makeForwardMsg(msgList);
-        let forwardMsg_json = forwardMsg.data;
-
-        if (typeof(forwardMsg_json) === 'object') {
-            if (forwardMsg_json.app === 'com.tencent.multimsg' && forwardMsg_json.meta?.detail) {
-                let detail = forwardMsg_json.meta.detail;
-                let resid = detail.resid;
-                let fileName = detail.uniseq;
-                let preview = '';
-                for (let val of detail.news) {
-                    preview += `<title color="#777777" size="26">${val.text}</title>`;
-                }
-                forwardMsg.data = `<?xml version="1.0" encoding="utf-8"?><msg brief="[聊天记录]" m_fileName="${fileName}" action="viewMultiMsg" tSum="1" flag="3" m_resid="${resid}" serviceID="35" m_fileSize="0"><item layout="1"><title color="#000000" size="34">转发的聊天记录</title>${preview}<hr></hr><summary color="#808080" size="26">${detail.summary}</summary></item><source name="聊天记录"></source></msg>`;
-                forwardMsg.type = 'xml';
-                forwardMsg.id = 35;
-				
-				let summaryTitle = `给你kkp吧`;
-
-				forwardMsg.data = forwardMsg.data
-					.replace('<?xml version="1.0" encoding="utf-8"?>', '<?xml version="1.0" encoding="UTF-8"?>')
-					.replace(/\n/g, '')
-					.replace(/<title color="#777777" size="26">(.+?)<\/title>/g, '___')
-					.replace(/___+/, `<title color="#777777" size="26">${summaryTitle}</title>`);
-
-                const recallConfig = this.getRecallConfig();
-
-                const sentMessage = await e.reply(forwardMsg);
-                if (recallConfig.recall) {
-                    setTimeout(() => {
-                        e.group.recallMsg(sentMessage.message_id);
-                    }, recallConfig.time);
-                }
-        }
-    }
-  }
 }
