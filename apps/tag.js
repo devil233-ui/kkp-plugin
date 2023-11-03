@@ -84,7 +84,9 @@ export class SetuImageFetcher extends plugin {
                     `是否ai：${pixivDetails.body.aiType === 0 ? '否' : '是'}%n`,
                     `标题：${pixivDetails.body.illustTitle}%n`,
                     `上传时间：${pixivDetails.body.createDate}%n`,
-                    `♥：${imgData.body.likeCount},😊：${imgData.body.bookmarkCount},👁：${imgData.body.viewCount}`,
+                    `喜欢数：${pixivDetails.body.likeCount}%n`,
+                    `收藏数：${pixivDetails.body.bookmarkCount}%n`,
+                    `观看数：${pixivDetails.body.viewCount}%n`,
                     `tag：${tagList.join(", ")}%n`
                 ];
                 const msgList = {
