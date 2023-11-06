@@ -79,15 +79,15 @@ export class SetuImageFetcher extends plugin {
                 const imageUrls = Object.values(pixivDetails.body.urls).map(url => `${url}?key=${keyValue}`);
                 const tagList = pixivDetails.body.tags.tags.map(tagObj => tagObj.tag);
                 const msgData = [
-                    `id：${pixivDetails.body.illustId}/n`,
-                    `画师：${pixivDetails.body.userName}（${pixivDetails.body.userId}）/n`,
-                    `是否ai：${pixivDetails.body.aiType === 0 ? '否' : '是'}/n`,
-                    `标题：${pixivDetails.body.illustTitle}/n`,
-                    `上传时间：${pixivDetails.body.createDate}/n`,
+                    `id：${pixivDetails.body.illustId}\n`,
+                    `画师：${pixivDetails.body.userName}（${pixivDetails.body.userId}）\n`,
+                    `是否ai：${pixivDetails.body.aiType === 0 ? '否' : '是'}\n`,
+                    `标题：${pixivDetails.body.illustTitle}\n`,
+                    `上传时间：${pixivDetails.body.createDate}\n`,
                     `♥：${pixivDetails.body.likeCount}`,
                     `😊：${pixivDetails.body.bookmarkCount}`,
-                    `👁：${pixivDetails.body.viewCount}/n`,
-                    `tag：${tagList.join(", ")}/n`
+                    `👁：${pixivDetails.body.viewCount}\n`,
+                    `tag：${tagList.join(", ")}\n`
                 ];
                 const msgList = {
                     message: msgData.concat(imageUrls.map(url => segment.image(url))),
