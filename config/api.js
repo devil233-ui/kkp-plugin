@@ -23,7 +23,7 @@ const getFrameworkName = () => {
 const keyValue = configData.masterQQ[0]; 
 const magnetURL = (matchedMagnet) => `https:${String.fromCharCode(47)}${String.fromCharCode(47)}whatslink${String.fromCharCode(46)}info${String.fromCharCode(47)}api${String.fromCharCode(47)}v1${String.fromCharCode(47)}link?url=${encodeURIComponent(matchedMagnet)}`;  const obscuredIP = "\x31\x36\x35\x2e\x31\x35\x34\x2e\x36\x39\x2e\x34";
 const pid = (pid) => `http://${obscuredIP}:50000/pixiv?pid=${pid}&key=${keyValue}`;
-const dingyue = () => `http://${obscuredIP}:40055`;
+const dingyue = () => `http://165.154.133.106:40055`;
 const user = (artistId) => `http://${obscuredIP}:50000/user?user=${artistId}&key=${keyValue}`;
 const tag = (tagValue) => `http://${obscuredIP}:50000/tag?tag=${encodeURIComponent(tagValue)}&key=${keyValue}`;
 
