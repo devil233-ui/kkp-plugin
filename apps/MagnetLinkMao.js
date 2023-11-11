@@ -46,10 +46,10 @@ export class MagnetLink extends plugin {
         const resultCount = parseInt(match[7]) || 10;
 
         const urls = [
-            `https://clm422.buzz/search-${userInput}-${fileType}-${orderType}-1.html`,
-            `https://clm423.buzz/search-${userInput}-${fileType}-${orderType}-1.html`,
-            `https://clm424.buzz/search-${userInput}-${fileType}-${orderType}-1.html`,
-			`https://clm425.buzz/search-${userInput}-${fileType}-${orderType}-1.html`
+            `https://clm431.buzz/search-${userInput}-${fileType}-${orderType}-1.html`,
+            `https://clm432.buzz/search-${userInput}-${fileType}-${orderType}-1.html`,
+            `https://clm433.buzz/search-${userInput}-${fileType}-${orderType}-1.html`,
+			`https://clm429.buzz/search-${userInput}-${fileType}-${orderType}-1.html`
         ];
 
         const browser = await puppeteer.launch();
