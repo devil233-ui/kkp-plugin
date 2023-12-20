@@ -1,6 +1,7 @@
 import plugin from '../../../lib/plugins/plugin.js';
 import fs from 'fs';
 import YAML from 'yaml';
+import { keyValue } from '../config/api.js';
 
 export class RecallConfigController extends plugin {
     constructor() {
@@ -15,7 +16,7 @@ export class RecallConfigController extends plugin {
                     fnc: 'toggleRecall'
                 },
                 {
-                    reg: '^#?设置p撤回(\\d+)$',
+                    reg: '^#?设置p撤回(%%d+)$',
                     fnc: 'setRecallTime'
                 }
             ]
@@ -41,6 +42,11 @@ export class RecallConfigController extends plugin {
     }
 
     async toggleRecall(e) {
+
+		if (e.user_id.toString() !== keyValue.toString()) {
+			return;
+		}
+
         const [, action] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
         const config = this.getRecallConfig();
 
@@ -56,6 +62,11 @@ export class RecallConfigController extends plugin {
     }
 
     async setRecallTime(e) {
+        
+		if (e.user_id.toString() !== keyValue.toString()) {
+			return;
+		}
+        
         const [, timeStr] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
         const time = parseInt(timeStr) * 1000;
 
