@@ -46,9 +46,10 @@ export class MagnetLink extends plugin {
         const resultCount = parseInt(match[7]) || 10;
 
         const urls = [
-            `https://clm431.buzz/search-${userInput}-${fileType}-${orderType}-1.html`,
-            `https://clm432.buzz/search-${userInput}-${fileType}-${orderType}-1.html`,
-            `https://clm433.buzz/search-${userInput}-${fileType}-${orderType}-1.html`,
+            `https://clm434.buzz/search-${userInput}-${fileType}-${orderType}-1.html`,
+            `https://clm435.buzz/search-${userInput}-${fileType}-${orderType}-1.html`,
+            `https://clm436.buzz/search-${userInput}-${fileType}-${orderType}-1.html`,
+			`https://clm433.buzz/search-${userInput}-${fileType}-${orderType}-1.html`,
 			`https://clm429.buzz/search-${userInput}-${fileType}-${orderType}-1.html`
         ];
 

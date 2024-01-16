@@ -57,7 +57,7 @@ export class ArtistSubscription extends plugin {
             return;
         }
 
-        if (Object.keys(data[groupId].artists).length >= 10) {
+        if (Object.keys(data[groupId].artists).length >= 20) {
             await e.reply('该群已达到画师订阅上限！');
             return;
         }

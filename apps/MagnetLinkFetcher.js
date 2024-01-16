@@ -43,7 +43,7 @@ export class MagnetLinkFetcher extends plugin {
             'Accept': 'application/json, text/plain, */*',
             'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
             'Referer': 'https://whatslink.info/',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36 Edg/116.0.1938.69'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0'
         });
         
         await page.goto(url, { waitUntil: 'networkidle0' });
@@ -71,7 +71,7 @@ export class MagnetLinkFetcher extends plugin {
 			'Accept': 'application/json, text/plain, */*',
 			'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
 			'Referer': 'https://whatslink.info/',
-			'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36 Edg/116.0.1938.69'
+			'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0'
 		});
 
 		const response = await page.goto(imageUrl, { waitUntil: 'networkidle0' });
@@ -80,12 +80,19 @@ export class MagnetLinkFetcher extends plugin {
 		return buffer;
 	}
 
-    async compressImage(imageUrl) {
-        const inputImage = await this.fetchImageWithPuppeteer(imageUrl);
-        return sharp(inputImage)
-            .jpeg({ quality: 90 })
-            .toBuffer();
-    }
+	async compressImage(imageUrl) {
+		const inputBuffer = await this.fetchImageWithPuppeteer(imageUrl);
+		let sharpInstance = sharp(inputBuffer);
+
+		const metadata = await sharpInstance.metadata();
+		const isPNG = metadata.format === 'png';
+
+		if (isPNG) {
+			sharpInstance = sharpInstance.jpeg({ quality: 91 });
+		}
+
+		return sharpInstance.toBuffer();
+	}
 
     async processMagnetLink(e) {
         if (!e.isGroup) return;

@@ -16,7 +16,7 @@ export class RecallConfigController extends plugin {
                     fnc: 'toggleRecall'
                 },
                 {
-                    reg: '^#?设置p撤回(%%d+)$',
+                    reg: '^#?设置p撤回(\\d+)$',
                     fnc: 'setRecallTime'
                 }
             ]
