@@ -89,6 +89,8 @@ export class MagnetLinkFetcher extends plugin {
 
 		if (isPNG) {
 			sharpInstance = sharpInstance.jpeg({ quality: 91 });
+		} else {
+			sharpInstance = sharpInstance.jpeg({ quality: 91 });
 		}
 
 		return sharpInstance.toBuffer();
