@@ -124,7 +124,7 @@ export class MagnetLinkFetcher extends plugin {
                     const compressedScreenshots = await Promise.all(
                         data.screenshots.map(async s => {
                             const compressedBuffer = await this.compressImage(s.screenshot);
-                            return segment.image(compressedBuffer);
+                            return compressedBuffer; // 返回的值可能是 null
                         })
                     );
                     screenshotData = compressedScreenshots;
