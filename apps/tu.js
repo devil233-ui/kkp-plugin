@@ -55,7 +55,7 @@ export class CosImageFetcher extends plugin {
         if (!e.isGroup) return;
 
         let promises = [];
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < 10; i++) {
             promises.push(this.fetchImage(url));
         }
 
@@ -85,7 +85,7 @@ export class CosImageFetcher extends plugin {
                         forwardMsg.type = 'xml';
                         forwardMsg.id = 35;
 
-                        let summaryTitle = `涩批还看 1-5`;
+                        let summaryTitle = `涩批还看 1-10`;
 
                         forwardMsg.data = forwardMsg.data
                             .replace('<?xml version="1.0" encoding="utf-8"?>', '<?xml version="1.0" encoding="UTF-8"?>')
