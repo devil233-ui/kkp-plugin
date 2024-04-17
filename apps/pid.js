@@ -87,7 +87,7 @@ export class PixivImageFetcher extends plugin {
             `收藏数：${body.bookmarkCount}\n`,
             `观看数：${body.viewCount}\n`, 
             `tag：${tagList.join(", ")}\n`, 
-            `MD5：${md5}\n`
+            `MD5：${md5s.join(', ')}\n`
         ];
 
         const msgList = {
