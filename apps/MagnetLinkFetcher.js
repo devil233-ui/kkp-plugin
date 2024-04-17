@@ -80,25 +80,31 @@ export class MagnetLinkFetcher extends plugin {
 		return buffer;
 	}
 
-	async compressImage(imageUrl) {
-		try {
-			const inputBuffer = await this.fetchImageWithPuppeteer(imageUrl);
-			let sharpInstance = sharp(inputBuffer);
-
-			const metadata = await sharpInstance.metadata();
-			const isPNG = metadata.format === 'png';
-
-			if (isPNG) {
-				sharpInstance = sharpInstance.jpeg({ quality: 91 });
-			} else {
-				sharpInstance = sharpInstance.jpeg({ quality: 91 });
-			}
-
-			return sharpInstance.toBuffer();
-		} catch (error) {
-			return null; // 返回 null 表示跳过这张图片
-		}
-	}
+    async compressImage(imageUrl) {
+        try {
+            const inputBuffer = await this.fetchImageWithPuppeteer(imageUrl);
+            if (!inputBuffer) {
+                // 图片获取失败，直接返回null，跳过该图片处理
+                return null;
+            }
+            let sharpInstance = sharp(inputBuffer);
+    
+            const metadata = await sharpInstance.metadata();
+            const isPNG = metadata.format === 'png';
+    
+            if (isPNG) {
+                sharpInstance = sharpInstance.jpeg({ quality: 92 });
+            } else {
+                sharpInstance = sharpInstance.jpeg({ quality: 92 });
+            }
+    
+            return sharpInstance.toBuffer();
+        } catch (error) {
+            // 图片处理过程中出现错误，直接返回null，跳过该图片处理
+            return null;
+        }
+    }
+    
 
     async processMagnetLink(e) {
         if (!e.isGroup) return;

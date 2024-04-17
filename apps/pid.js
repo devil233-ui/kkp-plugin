@@ -2,6 +2,7 @@ import plugin from '../../../lib/plugins/plugin.js';
 import axios from 'axios';
 import fs from 'fs';
 import YAML from 'yaml';
+import crypto from 'crypto';
 import { pid as pidAPI, user, keyValue } from '../config/api.js';  
 
 export class PixivImageFetcher extends plugin {
@@ -65,6 +66,14 @@ export class PixivImageFetcher extends plugin {
 
         const tagList = body.tags.tags.map(tagObj => tagObj.tag);
 
+        // 获取图片数据
+        const imageDataResponse = await axios.get(imageUrls[0], { responseType: 'arraybuffer' });
+        const imageData = imageDataResponse.data;
+
+        // 重新计算 MD5
+        const md5 = crypto.createHash('md5').update(imageData).digest('hex');
+        
+
         const msgData = [
             `id：${body.illustId}\n`,
             `画师：${body.userName}（${body.userId}）\n`,
@@ -74,7 +83,8 @@ export class PixivImageFetcher extends plugin {
             `喜欢数：${body.likeCount}\n`,
             `收藏数：${body.bookmarkCount}\n`,
             `观看数：${body.viewCount}\n`, 
-            `tag：${tagList.join(", ")}\n`
+            `tag：${tagList.join(", ")}\n`, 
+            `MD5：${md5}\n`
         ];
 
         const msgList = {

@@ -2,6 +2,7 @@ import plugin from '../../../lib/plugins/plugin.js';
 import axios from 'axios';
 import fs from 'fs';
 import YAML from 'yaml';
+import crypto from 'crypto';
 import { pid, keyValue, tag as fetchTag } from '../config/api.js';
 
 export class SetuImageFetcher extends plugin {
@@ -78,6 +79,14 @@ export class SetuImageFetcher extends plugin {
             if (pixivDetails && pixivDetails.body) {
                 const imageUrls = Object.values(pixivDetails.body.urls).map(url => `${url}?key=${keyValue}`);
                 const tagList = pixivDetails.body.tags.tags.map(tagObj => tagObj.tag);
+
+                // 获取图片数据
+                const imageDataResponse = await axios.get(imageUrls[0], { responseType: 'arraybuffer' });
+                const imageData = imageDataResponse.data;
+
+                // 重新计算 MD5
+                const md5 = crypto.createHash('md5').update(imageData).digest('hex');
+
                 const msgData = [
                     `id：${pixivDetails.body.illustId}\n`,
                     `画师：${pixivDetails.body.userName}（${pixivDetails.body.userId}）\n`,
@@ -87,12 +96,14 @@ export class SetuImageFetcher extends plugin {
                     `♥：${pixivDetails.body.likeCount}`,
                     `😊：${pixivDetails.body.bookmarkCount}`,
                     `👁：${pixivDetails.body.viewCount}\n`,
-                    `tag：${tagList.join(", ")}\n`
+                    `tag：${tagList.join(", ")}\n`,
+                    `MD5：${md5}\n`
                 ];
                 const msgList = {
                     message: msgData.concat(imageUrls.map(url => segment.image(url))),
                     nickname: e.user_id.toString(),
-                    user_id: e.user_id
+                    user_id: e.user_id,
+                    imageBuffer: imageData
                 };
                 imageMessages.push(msgList);
             }

@@ -1,4 +1,4 @@
-import plugin from '../../../lib/plugins/plugin.js'
+import plugin from '../../../lib/plugins/plugin.js';
 import puppeteer from 'puppeteer';
 
 export class MagnetLink extends plugin {
@@ -24,7 +24,7 @@ export class MagnetLink extends plugin {
     }
 
     async magnetHelp(e) {
-		if (!e.isGroup) return;
+        if (!e.isGroup) return;
         let helpText = "#搜磁力更改为#磁力猫（内容）和#磁力草（内容）\n\n"
         helpText += "#磁力猫支持搜索格式  #磁力猫[搜索内容] [全部/影视/音乐/图像/文档/压缩包/安装包/其他] [相关度/文件大小/添加时间/热度/最近下载] [结果数量]\n"
         helpText += "如#磁力猫ipx  #磁力猫ipx 全部 热度 20  #磁力猫ipx 影视 添加时间\n\n"
@@ -34,7 +34,7 @@ export class MagnetLink extends plugin {
     }
 
     async processMagnetLink(e) {
-		if (!e.isGroup) return;
+        if (!e.isGroup) return;
         let match = e.msg.match(/^#?磁力猫\s*(\S+)(\s+(\S+))?(\s+(\S+))?(\s+(\d+))?$/);
         if (!match) {
             return;
@@ -47,13 +47,12 @@ export class MagnetLink extends plugin {
 
         const urls = [
             `https://clm434.buzz/search-${userInput}-${fileType}-${orderType}-1.html`,
-            `https://clm435.buzz/search-${userInput}-${fileType}-${orderType}-1.html`,
-            `https://clm436.buzz/search-${userInput}-${fileType}-${orderType}-1.html`,
-			`https://clm433.buzz/search-${userInput}-${fileType}-${orderType}-1.html`,
-			`https://clm429.buzz/search-${userInput}-${fileType}-${orderType}-1.html`
+            `https://clm439.buzz/search-${userInput}-${fileType}-${orderType}-1.html`,
+            `https://clm438.buzz/search-${userInput}-${fileType}-${orderType}-1.html`,
+            `https://clm429.buzz/search-${userInput}-${fileType}-${orderType}-1.html`
         ];
 
-        const browser = await puppeteer.launch();
+        const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
         let page;
 
         for (let i = 0; i < urls.length; i++) {
@@ -71,7 +70,7 @@ export class MagnetLink extends plugin {
 
                 const titleElements = await page.$$eval('h3 > a', links => links.map(link => link.innerText));
                 const matches = await page.$$eval('.sbar', divs => divs.map(div => div.innerHTML));
-                
+
                 if (matches) {
                     let results = [];
                     for (let i = 0; i < resultCount && i < matches.length; i++) {
@@ -82,7 +81,7 @@ export class MagnetLink extends plugin {
                         let size = match.match(/大小:<b class="cpill yellow-pill">([^<]+)<\/b>/)[1];
                         let recentDownload = match.match(/最近下载:<b>([^<]+)<\/b>/)[1];
                         let heat = match.match(/热度:<b>([^<]+)<\/b>/)[1];
-                        results.push({user_id: e.user_id, nickname: e.user_id, message: `${title}\n\n${magnetLink}\n\n添加时间：${addedTime}\n大小：${size}\n最近下载：${recentDownload}\n热度：${heat}`});
+                        results.push({ user_id: e.user_id, nickname: e.user_id, message: `${title}\n\n${magnetLink}\n\n添加时间：${addedTime}\n大小：${size}\n最近下载：${recentDownload}\n热度：${heat}` });
                     }
                     const forwardMsg = await e.group.makeForwardMsg(results);
                     await this.reply(forwardMsg);
