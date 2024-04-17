@@ -54,25 +54,28 @@ export class PixivImageFetcher extends plugin {
     }
 
     async sendPixivDetails(e, url) {
-		if (!e.isGroup) return;
+        if (!e.isGroup) return;
         const details = await this.fetchImageDetails(url);
-
+    
         if (!details || !details.body) {
             throw new Error("请输入正确的pid");
         }
-
+    
         const body = details.body;
-        const imageUrls = Object.values(body.urls).map(url => `${url}?key=${keyValue}`);  // 在URL后添加key
-
+        const imageUrls = Object.values(body.urls).map(url => `${url}?key=${keyValue}`);
+    
         const tagList = body.tags.tags.map(tagObj => tagObj.tag);
-
-        // 获取图片数据
-        const imageDataResponse = await axios.get(imageUrls[0], { responseType: 'arraybuffer' });
-        const imageData = imageDataResponse.data;
-
+    
+        // 使用 Promise.all 并发获取图片数据
+        const imageDataPromises = imageUrls.map(async (imageUrl) => {
+            const imageDataResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+            return imageDataResponse.data;
+        });
+    
+        const imageDatas = await Promise.all(imageDataPromises);
+    
         // 重新计算 MD5
-        const md5 = crypto.createHash('md5').update(imageData).digest('hex');
-        
+        const md5s = imageDatas.map((imageData) => crypto.createHash('md5').update(imageData).digest('hex'));
 
         const msgData = [
             `id：${body.illustId}\n`,

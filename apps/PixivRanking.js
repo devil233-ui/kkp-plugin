@@ -54,23 +54,24 @@ export class DailyRankingFetcher extends plugin {
             return;
         }
 
-        const tasks = artworkIds.map(pid => this.fetchPixivImageDetails(pid));
-        const imageMessages = [];
+        // 使用 Promise.all 并发获取图片详情
+        const detailsPromises = artworkIds.map(async (pid) => this.fetchPixivImageDetails(pid));
+        const detailsList = await Promise.all(detailsPromises);
 
-        for (const task of tasks) {
-            const pixivDetails = await task;
-            if (pixivDetails && pixivDetails.body) {
-                const imageUrls = Object.values(pixivDetails.body.urls).map(url => `${url}?key=${keyValue}`);
-                const tagList = pixivDetails.body.tags.tags.map(tagObj => tagObj.tag);
+        const imageMessages = [];
+        for (const [index, details] of detailsList.entries()) {
+            if (details && details.body) {
+                const imageUrls = Object.values(details.body.urls).map(url => `${url}?key=${keyValue}`);
+                const tagList = details.body.tags.tags.map(tagObj => tagObj.tag);
                 const msgData = [
-                    `id：${pixivDetails.body.illustId}\n`,
-                    `画师：${pixivDetails.body.userName}（${pixivDetails.body.userId}）\n`,
-                    `是否ai：${pixivDetails.body.aiType === 0 ? '否' : '是'}\n`,
-                    `标题：${pixivDetails.body.illustTitle}\n`,
-                    `上传时间：${pixivDetails.body.createDate}\n`,
-                    `♥：${pixivDetails.body.likeCount}`,
-                    `😊：${pixivDetails.body.bookmarkCount}`,
-                    `👁：${pixivDetails.body.viewCount}\n`,
+                    `id：${details.body.illustId}\n`,
+                    `画师：${details.body.userName}（${details.body.userId}）\n`,
+                    `是否ai：${details.body.aiType === 0 ? '否' : '是'}\n`,
+                    `标题：${details.body.illustTitle}\n`,
+                    `上传时间：${details.body.createDate}\n`,
+                    `♥：${details.body.likeCount}`,
+                    `😊：${details.body.bookmarkCount}`,
+                    `👁：${details.body.viewCount}\n`,
                     `tag：${tagList.join(", ")}\n`
                 ];
                 const msgList = {

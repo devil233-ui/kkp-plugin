@@ -54,7 +54,7 @@ export class SetuImageFetcher extends plugin {
 
     async _processSetuImages(e) {
         if (!e.isGroup) return;
-        
+
         const [, numStr, tag] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
         const num = parseInt(numStr);
 
@@ -71,39 +71,44 @@ export class SetuImageFetcher extends plugin {
         
         const selectedPids = this.getRandomIds(idsList, num);
 
-        const tasks = selectedPids.map(pid => this.fetchPixivImageDetails(pid));
+        // 使用 Promise.all 并发获取图片详情
+        const detailsPromises = selectedPids.map(async (pid) => this.fetchPixivImageDetails(pid));
+        const detailsList = await Promise.all(detailsPromises);
+
         const imageMessages = [];
+        for (const [index, details] of detailsList.entries()) {
+            if (details && details.body) {
+                const imageUrls = Object.values(details.body.urls).map(url => `${url}?key=${keyValue}`);
+                const tagList = details.body.tags.tags.map(tagObj => tagObj.tag);
 
-        for (const task of tasks) {
-            const pixivDetails = await task;
-            if (pixivDetails && pixivDetails.body) {
-                const imageUrls = Object.values(pixivDetails.body.urls).map(url => `${url}?key=${keyValue}`);
-                const tagList = pixivDetails.body.tags.tags.map(tagObj => tagObj.tag);
-
-                // 获取图片数据
-                const imageDataResponse = await axios.get(imageUrls[0], { responseType: 'arraybuffer' });
-                const imageData = imageDataResponse.data;
+                // 使用 Promise.all 并发获取图片数据
+                const imageDataPromises = imageUrls.map(async (imageUrl) => {
+                    const imageDataResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+                    return imageDataResponse.data;
+                });
+                const imageDatas = await Promise.all(imageDataPromises);
 
                 // 重新计算 MD5
-                const md5 = crypto.createHash('md5').update(imageData).digest('hex');
+                const md5s = imageDatas.map((imageData) => crypto.createHash('md5').update(imageData).digest('hex'));
 
                 const msgData = [
-                    `id：${pixivDetails.body.illustId}\n`,
-                    `画师：${pixivDetails.body.userName}（${pixivDetails.body.userId}）\n`,
-                    `是否ai：${pixivDetails.body.aiType === 0 ? '否' : '是'}\n`,
-                    `标题：${pixivDetails.body.illustTitle}\n`,
-                    `上传时间：${pixivDetails.body.createDate}\n`,
-                    `♥：${pixivDetails.body.likeCount}`,
-                    `😊：${pixivDetails.body.bookmarkCount}`,
-                    `👁：${pixivDetails.body.viewCount}\n`,
+                    `id：${details.body.illustId}\n`,
+                    `画师：${details.body.userName}（${details.body.userId}）\n`,
+                    `是否ai：${details.body.aiType === 0 ? '否' : '是'}\n`,
+                    `标题：${details.body.illustTitle}\n`,
+                    `上传时间：${details.body.createDate}\n`,
+                    `♥：${details.body.likeCount}`,
+                    `😊：${details.body.bookmarkCount}`,
+                    `👁：${details.body.viewCount}\n`,
                     `tag：${tagList.join(", ")}\n`,
-                    `MD5：${md5}\n`
+                    `MD5：${md5s.join(', ')}\n`
                 ];
+
                 const msgList = {
-                    message: msgData.concat(imageUrls.map(url => segment.image(url))),
+                    message: msgData.concat(imageUrls.map((url, i) => segment.image(url, { buffer: imageDatas[i] }))), // 假设segment.image支持接收Buffer参数
                     nickname: e.user_id.toString(),
                     user_id: e.user_id,
-                    imageBuffer: imageData
+                    imageBuffers: imageDatas
                 };
                 imageMessages.push(msgList);
             }
