@@ -85,7 +85,7 @@ export class PixivImageFetcher extends plugin {
             // const nonce = crypto.randomInt(0, Number.MAX_SAFE_INTEGER); // 用于nonce
     
             // 创建包含nonce和图像数据的缓冲区
-            const combinedData = Buffer.concat([Buffer.from(nonce.toString()), imageDatas]);
+            const combinedData = Buffer.concat([Buffer.from(nonce.toString()), imageDatas[index]]);
     
             // 使用组合数据计算MD5
             const md = crypto.createHash('md5').update(combinedData).digest('hex');
