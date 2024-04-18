@@ -3,6 +3,7 @@ import axios from 'axios';
 import fs from 'fs';
 import YAML from 'yaml';
 import crypto from 'crypto';
+import { performance } from 'perf_hooks';
 import { pid, keyValue, tag as fetchTag } from '../config/api.js';
 
 export class SetuImageFetcher extends plugin {
@@ -91,7 +92,7 @@ export class SetuImageFetcher extends plugin {
                 const imageDatas = await Promise.all(imageDataPromises);
 
                 // 引入当前时间戳函数
-                const { now } = require('perf_hooks');
+                const nonce = performance.now();
                 // 在处理图像的循环内部：
                 for (const [index, details] of detailsList.entries()) {
 
