@@ -3,7 +3,6 @@ import axios from 'axios';
 import fs from 'fs';
 import YAML from 'yaml';
 import crypto from 'crypto';
-import { performance } from 'perf_hooks';
 import { pid as pidAPI, user, keyValue } from '../config/api.js';  
 
 export class PixivImageFetcher extends plugin {
@@ -75,35 +74,20 @@ export class PixivImageFetcher extends plugin {
     
         const imageDatas = await Promise.all(imageDataPromises);
     
-        const mdList = [];
-
-        // 在处理图像的循环内部：
-        for (const [index, details] of detailsList.entries()) {
-
-            // 生成时间戳或nonce
-            const nonce = performance.now();
-            // const nonce = crypto.randomInt(0, Number.MAX_SAFE_INTEGER); // 用于nonce
-    
-            // 创建包含nonce和图像数据的缓冲区
-            const combinedData = Buffer.concat([Buffer.from(nonce.toString()), imageDatas[index]]);
-    
-            // 使用组合数据计算MD5
-            const md = crypto.createHash('md5').update(combinedData).digest('hex');
-            mdList.push(md);
-            
-        }
+        // 重新计算 MD5
+        const md5s = imageDatas.map((imageData) => crypto.createHash('md5').update(imageData).digest('hex'));
 
         const msgData = [
-            `id：${details.body.illustId}\n`,
-            `画师：${details.body.userName}（${details.body.userId}）\n`,
-            `是否ai：${details.body.aiType === 0 ? '否' : '是'}\n`,
-            `标题：${details.body.illustTitle}\n`,
-            `上传时间：${details.body.createDate}\n`,
-            `♥：${details.body.likeCount}`,
-            `😊：${details.body.bookmarkCount}`,
-            `👁：${details.body.viewCount}\n`,
-            `tag：${tagList.join(", ")}\n`,
-            `MD5：${mdList.join(', ')}\n`
+            `id：${body.illustId}\n`,
+            `画师：${body.userName}（${body.userId}）\n`,
+            `是否ai：${body.aiType === 0 ? '否' : '是'}\n`,
+            `标题：${body.illustTitle}\n`,
+            `上传时间：${body.createDate}\n`, 
+            `喜欢数：${body.likeCount}\n`,
+            `收藏数：${body.bookmarkCount}\n`,
+            `观看数：${body.viewCount}\n`, 
+            `tag：${tagList.join(", ")}\n`, 
+            `MD5：${md5s.join(', ')}\n`
         ];
 
         const msgList = {
