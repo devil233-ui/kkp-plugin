@@ -75,34 +75,35 @@ export class PixivImageFetcher extends plugin {
     
         const imageDatas = await Promise.all(imageDataPromises);
     
-        // 引入当前时间戳函数
-        const nonce = performance.now();
+        const mdList = [];
+
         // 在处理图像的循环内部：
         for (const [index, details] of detailsList.entries()) {
 
             // 生成时间戳或nonce
-            const nonce = now(); // 用于时间戳
+            const nonce = performance.now();
             // const nonce = crypto.randomInt(0, Number.MAX_SAFE_INTEGER); // 用于nonce
     
             // 创建包含nonce和图像数据的缓冲区
             const combinedData = Buffer.concat([Buffer.from(nonce.toString()), imageData]);
     
             // 使用组合数据计算MD5
-            const md5 = crypto.createHash('md5').update(combinedData).digest('hex');
+            const md = crypto.createHash('md5').update(combinedData).digest('hex');
+            mdList.push(md);
             
         }
 
         const msgData = [
-            `id：${body.illustId}\n`,
-            `画师：${body.userName}（${body.userId}）\n`,
-            `是否ai：${body.aiType === 0 ? '否' : '是'}\n`,
-            `标题：${body.illustTitle}\n`,
-            `上传时间：${body.createDate}\n`, 
-            `喜欢数：${body.likeCount}\n`,
-            `收藏数：${body.bookmarkCount}\n`,
-            `观看数：${body.viewCount}\n`, 
-            `tag：${tagList.join(", ")}\n`, 
-            `MD5：${md5.join(', ')}\n`
+            `id：${details.body.illustId}\n`,
+            `画师：${details.body.userName}（${details.body.userId}）\n`,
+            `是否ai：${details.body.aiType === 0 ? '否' : '是'}\n`,
+            `标题：${details.body.illustTitle}\n`,
+            `上传时间：${details.body.createDate}\n`,
+            `♥：${details.body.likeCount}`,
+            `😊：${details.body.bookmarkCount}`,
+            `👁：${details.body.viewCount}\n`,
+            `tag：${tagList.join(", ")}\n`,
+            `MD5：${mdList.join(', ')}\n`
         ];
 
         const msgList = {
