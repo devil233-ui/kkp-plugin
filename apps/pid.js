@@ -74,8 +74,22 @@ export class PixivImageFetcher extends plugin {
     
         const imageDatas = await Promise.all(imageDataPromises);
     
-        // 重新计算 MD5
-        const md5s = imageDatas.map((imageData) => crypto.createHash('md5').update(imageData).digest('hex'));
+        // 引入当前时间戳函数
+        const { now } = require('perf_hooks');
+        // 在处理图像的循环内部：
+        for (const [index, details] of detailsList.entries()) {
+
+            // 生成时间戳或nonce
+            const nonce = now(); // 用于时间戳
+            // const nonce = crypto.randomInt(0, Number.MAX_SAFE_INTEGER); // 用于nonce
+    
+            // 创建包含nonce和图像数据的缓冲区
+            const combinedData = Buffer.concat([Buffer.from(nonce.toString()), imageData]);
+    
+            // 使用组合数据计算MD5
+            const md5 = crypto.createHash('md5').update(combinedData).digest('hex');
+            
+        }
 
         const msgData = [
             `id：${body.illustId}\n`,
@@ -87,7 +101,7 @@ export class PixivImageFetcher extends plugin {
             `收藏数：${body.bookmarkCount}\n`,
             `观看数：${body.viewCount}\n`, 
             `tag：${tagList.join(", ")}\n`, 
-            `MD5：${md5s.join(', ')}\n`
+            `MD5：${md5.join(', ')}\n`
         ];
 
         const msgList = {
