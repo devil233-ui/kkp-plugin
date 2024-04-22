@@ -36,7 +36,7 @@ export class MagnetLink extends plugin {
                     break;
             }
         }
-        const url = `http://124.220.69.229:3535/list.php/?name=${encodeURIComponent(userInput)}&page=1${orderParam}`;
+        const url = `https://www.cilicao.com/list.php/?name=${encodeURIComponent(userInput)}&page=1${orderParam}`;
         const browser = await puppeteer.launch({
 			args: ['--no-sandbox', '--disable-setuid-sandbox']
 		});
@@ -69,7 +69,7 @@ export class MagnetLink extends plugin {
 
                     const sjk = match[1];
                     const hash = match[2];
-                    const response = await axios.post('http://124.220.69.229:3535/ajax.php', {
+                    const response = await axios.post('https://www.cilicao.com/ajax2.php', {
                         typenum: 4,
                         md5hash: hash,
                         sjk: sjk
@@ -79,11 +79,11 @@ export class MagnetLink extends plugin {
                             'Accept-Encoding': 'gzip, deflate',
                             'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
                             'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                            'Host': '124.220.69.229:3535',
-                            'Origin': 'http://124.220.69.229:3535',
+                            'Host': 'https://www.cilicao.com',
+                            'Origin': 'https://www.cilicao.com',
                             'Proxy-Connection': 'keep-alive',
-                            'Referer': url,
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36 Edg/116.0.1938.81',
+                            'Referer': 'https://www.cilicao.com',
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0',
                             'X-Requested-With': 'XMLHttpRequest'
                         }
                     });
@@ -119,8 +119,6 @@ export class MagnetLink extends plugin {
 					forwardMsg.data = `<?xml version="1.0" encoding="utf-8"?><msg brief="[聊天记录]" m_fileName="${fileName}" action="viewMultiMsg" tSum="1" flag="3" m_resid="${resid}" serviceID="35" m_fileSize="0"><item layout="1"><title color="#000000" size="34">转发的聊天记录</title>${preview}<hr></hr><summary color="#808080" size="26">${detail.summary}</summary></item><source name="聊天记录"></source></msg>`;
 					forwardMsg.type = 'xml';
 					forwardMsg.id = 35;
-					
-					let summaryTitle = `给你kkp吧`;
 
 					forwardMsg.data = forwardMsg.data
 						.replace('<?xml version="1.0" encoding="utf-8"?>', '<?xml version="1.0" encoding="UTF-8"?>')
