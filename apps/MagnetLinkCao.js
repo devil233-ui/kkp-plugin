@@ -38,8 +38,8 @@ export class MagnetLink extends plugin {
         }
         const url = `https://www.cilicao.com/list.php/?name=${encodeURIComponent(userInput)}&page=1${orderParam}`;
         const browser = await puppeteer.launch({
-			args: ['--no-sandbox', '--disable-setuid-sandbox']
-		});
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
 
         const page = await browser.newPage();
 
@@ -63,10 +63,6 @@ export class MagnetLink extends plugin {
                     const onclickData = await magnetA.evaluate(a => a.getAttribute('onclick'));
                     const match = onclickData.match(/xiangqing\('(\d)','(\w{64})'\)/);
 
-                    if (!match || match[2] === '9999999999999999999999999999999999999999999999999999999999999999') {
-                        continue;
-                    }
-
                     const sjk = match[1];
                     const hash = match[2];
                     const response = await axios.post('https://www.cilicao.com/ajax2.php', {
@@ -79,10 +75,9 @@ export class MagnetLink extends plugin {
                             'Accept-Encoding': 'gzip, deflate',
                             'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
                             'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                            'Host': 'https://www.cilicao.com',
+                            'Host': 'www.cilicao.com', 
                             'Origin': 'https://www.cilicao.com',
-                            'Proxy-Connection': 'keep-alive',
-                            'Referer': 'https://www.cilicao.com',
+                            'Referer': 'https://www.cilicao.com/list.php', 
                             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0',
                             'X-Requested-With': 'XMLHttpRequest'
                         }
@@ -106,30 +101,7 @@ export class MagnetLink extends plugin {
                 await this.reply('未找到有效的磁力链接');
             } else {
                 const forwardMsg = await e.group.makeForwardMsg(results);
-				let forwardMsg_json = forwardMsg.data;
-				if (typeof(forwardMsg_json) === 'object') {
-				if (forwardMsg_json.app === 'com.tencent.multimsg' && forwardMsg_json.meta?.detail) {
-					let detail = forwardMsg_json.meta.detail;
-					let resid = detail.resid;
-					let fileName = detail.uniseq;
-					let preview = '';
-					for (let val of detail.news) {
-						preview += `<title color="#777777" size="26">${val.text}</title>`;
-					}
-					forwardMsg.data = `<?xml version="1.0" encoding="utf-8"?><msg brief="[聊天记录]" m_fileName="${fileName}" action="viewMultiMsg" tSum="1" flag="3" m_resid="${resid}" serviceID="35" m_fileSize="0"><item layout="1"><title color="#000000" size="34">转发的聊天记录</title>${preview}<hr></hr><summary color="#808080" size="26">${detail.summary}</summary></item><source name="聊天记录"></source></msg>`;
-					forwardMsg.type = 'xml';
-					forwardMsg.id = 35;
-
-					forwardMsg.data = forwardMsg.data
-						.replace('<?xml version="1.0" encoding="utf-8"?>', '<?xml version="1.0" encoding="UTF-8"?>')
-						.replace(/\n/g, '')
-						.replace(/<title color="#777777" size="26">(.+?)<\/title>/g, '___')
-						.replace(/___+/, `<title color="#777777" size="26">${summaryTitle}</title>`);
-
-					const sentMessage = await e.reply(forwardMsg);
-					
-				}
-			}
+                const sentMessage = await e.reply(forwardMsg);
             }
 
         } catch (error) {
