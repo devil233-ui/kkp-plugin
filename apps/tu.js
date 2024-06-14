@@ -42,12 +42,12 @@ export class CosImageFetcher extends plugin {
     }
 
     async process2Images(e) {
-        const url = `http://${"\x31\x36\x35\x2e\x31\x35\x34\x2e\x31\x33\x33\x2e\x31\x30\x36"}:50022`;
+        const url = `http://119.188.247.52:50022`;
         await this.sendImages(e, url);
     }
 
     async process3Images(e) {
-        const url = `http://${"\x31\x36\x35\x2e\x31\x35\x34\x2e\x31\x33\x33\x2e\x31\x30\x36"}:50033`;
+        const url = `http://119.188.247.52:50033`;
         await this.sendImages(e, url);
     }
 
