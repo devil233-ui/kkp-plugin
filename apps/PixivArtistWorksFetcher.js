@@ -3,6 +3,10 @@ import axios from 'axios';
 import fs from 'fs';
 import YAML from 'yaml';
 import { pid, user, keyValue } from '../config/api.js';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
 
 export class PixivArtistWorksFetcher extends plugin {
     constructor() {
@@ -10,7 +14,7 @@ export class PixivArtistWorksFetcher extends plugin {
             name: 'p站画师id获取图片',
             dsc: 'p站画师id获取图片',
             event: 'message',
-            priority: '50',
+            priority: 50,
             rule: [
                 {
                     reg: '^#来(\\d+)张(\\d+)作品$',
@@ -35,9 +39,6 @@ export class PixivArtistWorksFetcher extends plugin {
             const response = await axios.get(user(artistId));
             return response.data;
         } catch (error) {
-            if (error.response && error.response.status === 403) {
-                throw new Error("暂无权使用");
-            }
             throw error;
         }
     }
@@ -47,9 +48,28 @@ export class PixivArtistWorksFetcher extends plugin {
             const response = await axios.get(pid(pidValue));
             return response.data;
         } catch (error) {
-            if (error.response && error.response.status === 403) {
-                throw new Error("暂无权使用");
-            }
+            throw error;
+        }
+    }
+
+    async modifyImageWithPython(imageBuffer, imageName) {
+        const tempImagePath = `./temp_${imageName}.jpg`;
+
+        // Save image buffer to temporary file
+        fs.writeFileSync(tempImagePath, imageBuffer);
+
+        try {
+            const { stdout } = await execFileAsync('python', ['./plugins/kkp-plugin/modify_image.py', tempImagePath]);
+            const modifiedImagePath = stdout.trim();
+            const modifiedImageBuffer = fs.readFileSync(modifiedImagePath);
+
+            // Clean up temporary files
+            fs.unlinkSync(tempImagePath);
+            fs.unlinkSync(modifiedImagePath);
+
+            return modifiedImageBuffer;
+        } catch (error) {
+            fs.unlinkSync(tempImagePath);
             throw error;
         }
     }
@@ -98,9 +118,7 @@ export class PixivArtistWorksFetcher extends plugin {
             await this.sendCombinedWorkDetails(e, workDetailsList);
 
         } catch (error) {
-            if (error.message === "暂无权使用") {
-                await e.reply("暂无权使用");
-            }
+            await e.reply(`发生错误：${error.toString()}`);
         }
     }
 
@@ -108,7 +126,7 @@ export class PixivArtistWorksFetcher extends plugin {
         if (!e.isGroup) return;
 
         const combinedMsgData = [];
-        const combinedImageUrls = [];
+        const combinedImageBuffers = [];
 
         for (const details of workDetailsList) {
             const body = details.body;
@@ -129,48 +147,36 @@ export class PixivArtistWorksFetcher extends plugin {
             ];
 
             combinedMsgData.push(...msgData);
-            combinedImageUrls.push(...imageUrls);
+
+            // 使用 Promise.all 并发获取图片数据并进行修改
+            const imageDataPromises = imageUrls.map(async (imageUrl, index) => {
+                const imageDataResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+                return this.modifyImageWithPython(imageDataResponse.data, `image_${index}`);
+            });
+
+            const modifiedImageBuffers = await Promise.all(imageDataPromises);
+            combinedImageBuffers.push(...modifiedImageBuffers);
         }
 
-        const msgList = {
-            message: combinedMsgData.concat(combinedImageUrls.map(url => segment.image(url))),
-            nickname: e.user_id.toString(),
-            user_id: e.user_id
-        };
+        // 创建 segment 对象
+        const segmentList = combinedMsgData.concat(combinedImageBuffers.map(buffer => segment.image(buffer)));
 
-        const forwardMsg = await e.group.makeForwardMsg(msgList);
-        let forwardMsg_json = forwardMsg.data;
+        const forwardMsg = await e.group.makeForwardMsg([{ message: segmentList }]);
+        const recallConfig = this.getRecallConfig();
 
-        if (typeof (forwardMsg_json) === 'object') {
-            if (forwardMsg_json.app === 'com.tencent.multimsg' && forwardMsg_json.meta?.detail) {
-                let detail = forwardMsg_json.meta.detail;
-                let resid = detail.resid;
-                let fileName = detail.uniseq;
-                let preview = '';
-                for (let val of detail.news) {
-                    preview += `<title color="#777777" size="26">${val.text}</title>`;
-                }
-                forwardMsg.data = `<?xml version="1.0" encoding="utf-8"?><msg brief="[聊天记录]" m_fileName="${fileName}" action="viewMultiMsg" tSum="1" flag="3" m_resid="${resid}" serviceID="35" m_fileSize="0"><item layout="1"><title color="#000000" size="34">转发的聊天记录</title>${preview}<hr></hr><summary color="#808080" size="26">${detail.summary}</summary></item><source name="聊天记录"></source></msg>`;
-				forwardMsg.type = 'xml';
-				forwardMsg.id = 35;
-				
-				let summaryTitle = `给你kkp吧`;
-
-				forwardMsg.data = forwardMsg.data
-					.replace('<?xml version="1.0" encoding="utf-8"?>', '<?xml version="1.0" encoding="UTF-8"?>')
-					.replace(/\n/g, '')
-					.replace(/<title color="#777777" size="26">(.+?)<\/title>/g, '___')
-					.replace(/___+/, `<title color="#777777" size="26">${summaryTitle}</title>`);
-
-                const sentMessage = await e.reply(forwardMsg);
-				
-				const recallConfig = this.getRecallConfig();
-				if (recallConfig.recall) {
-					setTimeout(() => {
-						e.group.recallMsg(sentMessage.message_id);
-					}, recallConfig.time);
-				}
-            }
+        const sentMessage = await e.reply(forwardMsg);
+        if (recallConfig.recall) {
+            setTimeout(() => {
+                e.group.recallMsg(sentMessage.message_id);
+            }, recallConfig.time);
         }
+    }
+
+    shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
     }
 }

@@ -2,8 +2,8 @@ import plugin from '../../../lib/plugins/plugin.js';
 import axios from 'axios';
 import fs from 'fs';
 import YAML from 'yaml';
-import crypto from 'crypto';
-import { pid, keyValue, tag as fetchTag } from '../config/api.js';
+import { pid, tag as fetchTag } from '../config/api.js';
+import { execFile } from 'child_process';
 
 export class SetuImageFetcher extends plugin {
     constructor() {
@@ -11,7 +11,7 @@ export class SetuImageFetcher extends plugin {
             name: 'Setu Image Fetch',
             dsc: '通过tag搜索图',
             event: 'message',
-            priority: '500',
+            priority: 500,
             rule: [
                 {
                     reg: '^#?来(\\d+)张(.*?)图$',
@@ -48,8 +48,20 @@ export class SetuImageFetcher extends plugin {
     }
 
     getRandomIds(ids, count) {
-        const shuffled = ids.sort(() => 0.30 - Math.random());
+        const shuffled = ids.sort(() => 0.5 - Math.random());
         return shuffled.slice(0, count);
+    }
+
+    async modifyImageWithPython(imagePath) {
+        return new Promise((resolve, reject) => {
+            execFile('python', ['./plugins/kkp-plugin/modify_image.py', imagePath], (error, stdout, stderr) => {
+                if (error) {
+                    reject(error);
+                } else {
+                    resolve(stdout.trim());
+                }
+            });
+        });
     }
 
     async _processSetuImages(e) {
@@ -68,11 +80,9 @@ export class SetuImageFetcher extends plugin {
             await e.reply("没有这种图啊，涩批！");
             return;
         }
-        
-        const selectedPids = this.getRandomIds(idsList, num);
 
-        // 使用 Promise.all 并发获取图片详情
-        const detailsPromises = selectedPids.map(async (pid) => this.fetchPixivImageDetails(pid));
+        const selectedPids = this.getRandomIds(idsList, num);
+        const detailsPromises = selectedPids.map(pid => this.fetchPixivImageDetails(pid));
         const detailsList = await Promise.all(detailsPromises);
 
         await e.reply(`图片获取完毕，正在发送中...`);
@@ -80,18 +90,22 @@ export class SetuImageFetcher extends plugin {
         const imageMessages = [];
         for (const [index, details] of detailsList.entries()) {
             if (details && details.body) {
-                const imageUrls = Object.values(details.body.urls).map(url => `${url}?key=${keyValue}`);
+                const imageUrls = Object.values(details.body.urls).map(url => `${url}`);
                 const tagList = details.body.tags.tags.map(tagObj => tagObj.tag);
-
-                // 使用 Promise.all 并发获取图片数据
+                
                 const imageDataPromises = imageUrls.map(async (imageUrl) => {
                     const imageDataResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
                     return imageDataResponse.data;
                 });
                 const imageDatas = await Promise.all(imageDataPromises);
 
-                // 重新计算 MD5
-                const md5s = imageDatas.map((imageData) => crypto.createHash('md5').update(imageData).digest('hex'));
+                const modifiedImagePaths = [];
+                for (const [i, imageData] of imageDatas.entries()) {
+                    const imagePath = `./temp_image_${index}_${i}.jpg`;
+                    fs.writeFileSync(imagePath, imageData);
+                    const modifiedImagePath = await this.modifyImageWithPython(imagePath);
+                    modifiedImagePaths.push(modifiedImagePath);
+                }
 
                 const msgData = [
                     `id：${details.body.illustId}\n`,
@@ -99,18 +113,17 @@ export class SetuImageFetcher extends plugin {
                     `是否ai：${details.body.aiType === 0 ? '否' : '是'}\n`,
                     `标题：${details.body.illustTitle}\n`,
                     `上传时间：${details.body.createDate}\n`,
-                    `♥：${details.body.likeCount}`,
-                    `😊：${details.body.bookmarkCount}`,
+                    `♥：${details.body.likeCount}\n`,
+                    `😊：${details.body.bookmarkCount}\n`,
                     `👁：${details.body.viewCount}\n`,
                     `tag：${tagList.join(", ")}\n`,
-                    `MD5：${md5s.join(', ')}\n`
+                    ...modifiedImagePaths.map(imagePath => segment.image(imagePath))
                 ];
 
                 const msgList = {
-                    message: msgData.concat(imageUrls.map((url, i) => segment.image(url, { buffer: imageDatas[i] }))), // 假设segment.image支持接收Buffer参数
+                    message: msgData,
                     nickname: e.user_id.toString(),
                     user_id: e.user_id,
-                    imageBuffers: imageDatas
                 };
                 imageMessages.push(msgList);
             }
@@ -118,38 +131,13 @@ export class SetuImageFetcher extends plugin {
 
         if (imageMessages.length > 0) {
             const forwardMsg = await e.group.makeForwardMsg(imageMessages);
-            let forwardMsg_json = forwardMsg.data;
+            const recallConfig = this.getRecallConfig();
 
-            if (typeof(forwardMsg_json) === 'object') {
-                if (forwardMsg_json.app === 'com.tencent.multimsg' && forwardMsg_json.meta?.detail) {
-                    let detail = forwardMsg_json.meta.detail;
-                    let resid = detail.resid;
-                    let fileName = detail.uniseq;
-                    let preview = '';
-                    for (let val of detail.news) {
-                        preview += `<title color="#777777" size="26">${val.text}</title>`;
-                    }
-                    forwardMsg.data = `<?xml version="1.0" encoding="utf-8"?><msg brief="[聊天记录]" m_fileName="${fileName}" action="viewMultiMsg" tSum="1" flag="3" m_resid="${resid}" serviceID="35" m_fileSize="0"><item layout="1"><title color="#000000" size="34">转发的聊天记录</title>${preview}<hr></hr><summary color="#808080" size="26">${detail.summary}</summary></item><source name="聊天记录"></source></msg>`;
-                    forwardMsg.type = 'xml';
-                    forwardMsg.id = 35;
-					
-                    let summaryTitle = `给你kkp吧`;
-
-                    forwardMsg.data = forwardMsg.data
-                        .replace('<?xml version="1.0" encoding="utf-8"?>', '<?xml version="1.0" encoding="UTF-8"?>')
-                        .replace(/%n/g, '')
-                        .replace(/<title color="#777777" size="26">(.+?)<\/title>/g, '___')
-                        .replace(/___+/, `<title color="#777777" size="26">${summaryTitle}</title>`);
-
-                    const recallConfig = this.getRecallConfig();
-
-                    const sentMessage = await e.reply(forwardMsg);
-                    if (recallConfig.recall) {
-                        setTimeout(() => {
-                            e.group.recallMsg(sentMessage.message_id);
-                        }, recallConfig.time);
-                    }
-                }
+            const sentMessage = await e.reply(forwardMsg);
+            if (recallConfig.recall) {
+                setTimeout(() => {
+                    e.group.recallMsg(sentMessage.message_id);
+                }, recallConfig.time);
             }
         }
     }

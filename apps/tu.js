@@ -2,6 +2,10 @@ import plugin from '../../../lib/plugins/plugin.js';
 import axios from 'axios';
 import fs from 'fs';
 import YAML from 'yaml';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
 
 export class CosImageFetcher extends plugin {
     constructor() {
@@ -9,7 +13,7 @@ export class CosImageFetcher extends plugin {
             name: '23图',
             dsc: '23图',
             event: 'message',
-            priority: '60',
+            priority: 60,
             rule: [
                 {
                     reg: '^#?2图$',
@@ -22,23 +26,47 @@ export class CosImageFetcher extends plugin {
             ]
         });
     }
-	
-	getRecallConfig() {
+
+    getRecallConfig() {
         const path = './plugins/kkp-plugin/config/recall.yaml';
         const fileContents = fs.readFileSync(path, 'utf8');
         return YAML.parse(fileContents);
     }
-	
+
     async fetchImage(url) {
-        return axios.get(url, {
-            responseType: 'arraybuffer',
-            maxContentLength: Infinity,
-            maxBodyLength: Infinity
-        }).then(response => {
-            return Buffer.from(response.data, 'binary').toString('base64');
-        }).catch(error => {
+        try {
+            const response = await axios.get(url, {
+                responseType: 'arraybuffer',
+                maxContentLength: Infinity,
+                maxBodyLength: Infinity
+            });
+            return Buffer.from(response.data, 'binary');
+        } catch (error) {
+            console.error(`Error fetching image: ${error}`);
             return null;
-        });
+        }
+    }
+
+    async modifyImageWithPython(imageBuffer, imageName) {
+        const tempImagePath = `./temp_${imageName}.jpg`;
+
+        // Save image buffer to temporary file
+        fs.writeFileSync(tempImagePath, imageBuffer);
+
+        try {
+            const { stdout } = await execFileAsync('python', ['./plugins/kkp-plugin/modify_image.py', tempImagePath]);
+            const modifiedImagePath = stdout.trim();
+            const modifiedImageBuffer = fs.readFileSync(modifiedImagePath);
+
+            // Clean up temporary files
+            fs.unlinkSync(tempImagePath);
+            fs.unlinkSync(modifiedImagePath);
+
+            return modifiedImageBuffer;
+        } catch (error) {
+            fs.unlinkSync(tempImagePath);
+            throw error;
+        }
     }
 
     async process2Images(e) {
@@ -60,54 +88,38 @@ export class CosImageFetcher extends plugin {
         }
 
         try {
-            let base64Images = await Promise.all(promises);
+            let imageBuffers = await Promise.all(promises);
 
-            let msgList = base64Images.filter(Boolean).map((base64Image, index) => ({
-                message: [`涩批还看 ${index + 1}`, "\n", segment.image(`base64://${base64Image}`)],
+            let modifiedImagesPromises = imageBuffers.filter(Boolean).map((imageBuffer, index) => 
+                this.modifyImageWithPython(imageBuffer, `image_${index}`)
+            );
+
+            let modifiedImages = await Promise.all(modifiedImagesPromises);
+
+            let msgList = modifiedImages.map((modifiedImage, index) => ({
+                message: [`涩批还看 ${index + 1}`, "\n", segment.image(`base64://${modifiedImage.toString('base64')}`)],
                 nickname: e.user_id.toString(),
                 user_id: e.user_id
             }));
 
             if (msgList.length > 0) {
                 const forwardMsg = await e.group.makeForwardMsg(msgList);
-                let forwardMsg_json = forwardMsg.data;
+                const recallConfig = this.getRecallConfig();
 
-                if (typeof (forwardMsg_json) === 'object') {
-                    if (forwardMsg_json.app === 'com.tencent.multimsg' && forwardMsg_json.meta?.detail) {
-                        let detail = forwardMsg_json.meta.detail;
-                        let resid = detail.resid;
-                        let fileName = detail.uniseq;
-                        let preview = '';
-                        for (let val of detail.news) {
-                            preview += `<title color="#777777" size="26">${val.text}</title>`;
-                        }
-                        forwardMsg.data = `<?xml version="1.0" encoding="utf-8"?><msg brief="[聊天记录]" m_fileName="${fileName}" action="viewMultiMsg" tSum="1" flag="3" m_resid="${resid}" serviceID="35" m_fileSize="0"><item layout="1"><title color="#000000" size="34">转发的聊天记录</title>${preview}<hr></hr><summary color="#808080" size="26">${detail.summary}</summary></item><source name="聊天记录"></source></msg>`;
-                        forwardMsg.type = 'xml';
-                        forwardMsg.id = 35;
+                const sentMessage = await e.reply(forwardMsg);
 
-                        let summaryTitle = `涩批还看 1-10`;
-
-                        forwardMsg.data = forwardMsg.data
-                            .replace('<?xml version="1.0" encoding="utf-8"?>', '<?xml version="1.0" encoding="UTF-8"?>')
-                            .replace(/\n/g, '')
-                            .replace(/<title color="#777777" size="26">(.+?)<\/title>/g, '___')
-                            .replace(/___+/, `<title color="#777777" size="26">${summaryTitle}</title>`);
-
-                        const sentMessage = await e.reply(forwardMsg);
-
-                        const recallConfig = this.getRecallConfig();
-
-                        if (recallConfig.recall) {
-                            setTimeout(() => {
-                                e.group.recallMsg(sentMessage.message_id);
-                            }, recallConfig.time);
-                        }
-                    }
+                if (recallConfig.recall) {
+                    setTimeout(() => {
+                        e.group.recallMsg(sentMessage.message_id);
+                    }, recallConfig.time);
                 }
-
+            } else {
+                await e.reply('未能获取到图片，请稍后再试。');
             }
         } catch (error) {
+            console.error(`Error processing images: ${error}`);
             await e.reply(`发生错误：${error.toString()}`);
         }
     }
 }
+
