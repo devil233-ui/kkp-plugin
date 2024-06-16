@@ -65,7 +65,6 @@ export class SetuImageFetcher extends plugin {
     }
 
     async _processSetuImages(e) {
-        if (!e.isGroup) return;
 
         const [, numStr, tag] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
         const num = parseInt(numStr);
@@ -130,13 +129,19 @@ export class SetuImageFetcher extends plugin {
         }
 
         if (imageMessages.length > 0) {
-            const forwardMsg = await e.group.makeForwardMsg(imageMessages);
+            const forwardMsg = e.isGroup 
+            ? await e.group.makeForwardMsg(imageMessages) 
+            : await e.friend.makeForwardMsg(imageMessages);
+
             const recallConfig = this.getRecallConfig();
 
             const sentMessage = await e.reply(forwardMsg);
+
             if (recallConfig.recall) {
                 setTimeout(() => {
-                    e.group.recallMsg(sentMessage.message_id);
+                    e.isGroup 
+                        ? e.group.recallMsg(sentMessage.message_id) 
+                        : e.friend.recallMsg(sentMessage.message_id);
                 }, recallConfig.time);
             }
         }

@@ -123,7 +123,6 @@ export class PixivArtistWorksFetcher extends plugin {
     }
 
     async sendCombinedWorkDetails(e, workDetailsList) {
-        if (!e.isGroup) return;
 
         const combinedMsgData = [];
         const combinedImageBuffers = [];
@@ -161,13 +160,19 @@ export class PixivArtistWorksFetcher extends plugin {
         // 创建 segment 对象
         const segmentList = combinedMsgData.concat(combinedImageBuffers.map(buffer => segment.image(buffer)));
 
-        const forwardMsg = await e.group.makeForwardMsg([{ message: segmentList }]);
+        const forwardMsg = e.isGroup 
+        ? await e.group.makeForwardMsg([{ message: segmentList }]) 
+        : await e.friend.makeForwardMsg([{ message: segmentList }]);
+
         const recallConfig = this.getRecallConfig();
 
         const sentMessage = await e.reply(forwardMsg);
+
         if (recallConfig.recall) {
             setTimeout(() => {
-                e.group.recallMsg(sentMessage.message_id);
+                e.isGroup 
+                    ? e.group.recallMsg(sentMessage.message_id) 
+                    : e.friend.recallMsg(sentMessage.message_id);
             }, recallConfig.time);
         }
     }

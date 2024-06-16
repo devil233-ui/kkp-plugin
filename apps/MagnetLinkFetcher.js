@@ -102,7 +102,6 @@ export class MagnetLinkFetcher extends plugin {
     }
 
     async processMagnetLink(e) {
-        if (!e.isGroup) return;
 
         try {
             const matchedMagnet = e.msg.match(/^#验车(magnet:.+)$/)[1];
@@ -156,14 +155,19 @@ export class MagnetLinkFetcher extends plugin {
                     });
                 });
 
-                const forwardMsg = await e.group.makeForwardMsg(msgList);
+                const forwardMsg = e.isGroup 
+                    ? await e.group.makeForwardMsg(msgList) 
+                    : await e.friend.makeForwardMsg(msgList);
 
                 const recallConfig = this.getRecallConfig();
+
                 const sentMessage = await e.reply(forwardMsg);
 
                 if (recallConfig.recall) {
                     setTimeout(() => {
-                        e.group.recallMsg(sentMessage.message_id);
+                        e.isGroup 
+                            ? e.group.recallMsg(sentMessage.message_id) 
+                            : e.friend.recallMsg(sentMessage.message_id);
                     }, recallConfig.time);
                 }
             } else {

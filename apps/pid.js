@@ -107,13 +107,19 @@ export class PixivImageFetcher extends plugin {
             user_id: e.user_id,
         };
 
-        const forwardMsg = await e.group.makeForwardMsg(msgList);
+        const forwardMsg = e.isGroup 
+        ? await e.group.makeForwardMsg(msgList) 
+        : await e.friend.makeForwardMsg(msgList);
+
         const recallConfig = this.getRecallConfig();
 
         const sentMessage = await e.reply(forwardMsg);
+
         if (recallConfig.recall) {
             setTimeout(() => {
-                e.group.recallMsg(sentMessage.message_id);
+                e.isGroup 
+                    ? e.group.recallMsg(sentMessage.message_id) 
+                    : e.friend.recallMsg(sentMessage.message_id);
             }, recallConfig.time);
         }
     }

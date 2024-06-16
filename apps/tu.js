@@ -50,7 +50,6 @@ export class CosImageFetcher extends plugin {
     async modifyImageWithPython(imageBuffer, imageName) {
         const tempImagePath = `./temp_${imageName}.jpg`;
 
-        // Save image buffer to temporary file
         fs.writeFileSync(tempImagePath, imageBuffer);
 
         try {
@@ -58,7 +57,6 @@ export class CosImageFetcher extends plugin {
             const modifiedImagePath = stdout.trim();
             const modifiedImageBuffer = fs.readFileSync(modifiedImagePath);
 
-            // Clean up temporary files
             fs.unlinkSync(tempImagePath);
             fs.unlinkSync(modifiedImagePath);
 
@@ -80,8 +78,6 @@ export class CosImageFetcher extends plugin {
     }
 
     async sendImages(e, url) {
-        if (!e.isGroup) return;
-
         let promises = [];
         for (let i = 0; i < 10; i++) {
             promises.push(this.fetchImage(url));
@@ -103,14 +99,19 @@ export class CosImageFetcher extends plugin {
             }));
 
             if (msgList.length > 0) {
-                const forwardMsg = await e.group.makeForwardMsg(msgList);
+                const forwardMsg = e.isGroup 
+                    ? await e.group.makeForwardMsg(msgList) 
+                    : await e.friend.makeForwardMsg(msgList);
+
                 const recallConfig = this.getRecallConfig();
 
                 const sentMessage = await e.reply(forwardMsg);
 
                 if (recallConfig.recall) {
                     setTimeout(() => {
-                        e.group.recallMsg(sentMessage.message_id);
+                        e.isGroup 
+                            ? e.group.recallMsg(sentMessage.message_id) 
+                            : e.friend.recallMsg(sentMessage.message_id);
                     }, recallConfig.time);
                 }
             } else {
@@ -122,4 +123,3 @@ export class CosImageFetcher extends plugin {
         }
     }
 }
-
