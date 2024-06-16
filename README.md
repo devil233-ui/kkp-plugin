@@ -2,20 +2,17 @@
 ```
 git clone https://gitee.com/dungeonmaster/kkp-plugin.git ./plugins/kkp-plugin/
 ```
-#验车  功能依赖 （使用cnpm安装）  在kkp插件目录执行
+安装依赖
 ```
-npm install cnpm -g --registry=https://registry.npmmirror.com && cnpm i sharp axios
+pnpm add axios -w
 ```
-如果你的网络能稳定访问github,更推荐使用pnpm安装
+为了防止风控，所以得安装python来处理图片
+
+安装python依赖
 ```
-pnpm add sharp axios -w
+pip install -i https://pypi.tuna.tsinghua.edu.cn/simple pillow
 ```
 
-## ✨ 功能  <br/>      pixiv功能需加群738166380申请使用权    顶不住太多人用 :sob: <br/>
 
-| 命令 | 🌰 |
-| --- | --- |
-| pixiv功能 | ` #pid(p站图id) ` - 查看指定pid图<br/>` 来(数量)张(tag)图 #来2张原神图 ` - 查看指定tag图，一次最多看30张<br/> ` #画师(画师id) ` - 获取这个画师所有作品id<br/> ` #来2张(画师id)作品 ` - 查看这个画师最新几张作品<br/> ` #随机2张(画师id)作品 ` - 随机查看这个画师几张作品<br/> ` #开启p推送 #关闭p推送 ` - 订阅画师推送到指定群<br/> ` #订阅画师(画师id) ` - 订阅画师推送<br/>
-|  :chicken:  |  :chicken:  |
-| --- | --- |
-| 其他功能 | ` #otto(内容) ` - 电棍语音活字印刷<br/> ` #磁力猫(车牌号) ` - 磁力猫搜索<br/> ` #磁力草(车牌号) ` - 磁力草搜索<br/> ` #验车(磁力链接) ` - 预览这个磁力视频截图<br/>  ` #必应壁纸 ` - 查看必应壁纸<br/> ` 舔狗日记 ` - 舔狗日记<br/> ` #每日排行 ` - 查看pixiv每日排行图片<br/> ` #翻译 ` - 中英文互译<br/>` #2图  #3图 ` - 二次元三次元设图 楼点慎用<br/>
+## ✨ 功能    欢迎加群738166380  
+![输入图片说明](https://foruda.gitee.com/images/1717359187534988738/93d70d05_11990909.png "屏幕截图")

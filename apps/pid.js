@@ -71,7 +71,6 @@ export class PixivImageFetcher extends plugin {
     }
 
     async sendPixivDetails(e, url) {
-        if (!e.isGroup) return;
         const details = await this.fetchImageDetails(url);
 
         if (!details || !details.body) {
