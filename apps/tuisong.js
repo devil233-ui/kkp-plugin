@@ -82,7 +82,7 @@ schedule.scheduleJob('0 */4 * * *', async () => {
 										let message = [infoMsg];
 
 										for (let urlKey in imgData.body.urls) {
-											const imageUrl = `${imgData.body.urls[urlKey]}?key=321107534`;
+											const imageUrl = `${imgData.body.urls[urlKey]}`;
 											message.push(segment.image(imageUrl));
 										}
 										

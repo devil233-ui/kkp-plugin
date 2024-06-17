@@ -5,6 +5,8 @@ import YAML from 'yaml';
 import { pid, tag as fetchTag } from '../config/api.js';
 import { execFile } from 'child_process';
 
+const pythonCommand = process.platform === 'win32' ? 'python' : 'python3';
+
 export class SetuImageFetcher extends plugin {
     constructor() {
         super({
@@ -54,7 +56,7 @@ export class SetuImageFetcher extends plugin {
 
     async modifyImageWithPython(imagePath) {
         return new Promise((resolve, reject) => {
-            execFile('python', ['./plugins/kkp-plugin/modify_image.py', imagePath], (error, stdout, stderr) => {
+            execFile(pythonCommand, ['./plugins/kkp-plugin/modify_image.py', imagePath], (error, stdout, stderr) => {
                 if (error) {
                     reject(error);
                 } else {
