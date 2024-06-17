@@ -1,3 +1,5 @@
+如果你使用的是icqq+miao-yunzai，更推荐用[icqq版](https://gitee.com/dungeonmaster/kkp-plugin-icqq)（极大减少冻结封号概率）
+
 安装
 ```
 git clone https://gitee.com/dungeonmaster/kkp-plugin.git ./plugins/kkp-plugin/
