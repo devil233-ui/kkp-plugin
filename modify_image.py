@@ -5,12 +5,10 @@ import os
 
 
 def get_random_color_for_mode(mode):
-    if mode == 'RGB':
-        return (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
-    elif mode == 'L':  # 黑白图片，只需一个值
+    if mode == 'L':  # 黑白图片，只需一个值
         return random.randint(0, 255)
     else:
-        raise ValueError(f"Unsupported image mode: {mode}")
+        return (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
     
 
 def add_random_pixels(image_path):
