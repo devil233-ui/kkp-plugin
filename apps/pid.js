@@ -101,11 +101,11 @@ export class PixivImageFetcher extends plugin {
             `tag：${tagList.join(", ")}\n`,
         ].concat(modifiedImageBuffers.map(buffer => segment.image(buffer)));
 
-        const msgList = {
+        const msgList = [{
             message: msgData,
             nickname: e.user_id.toString(),
             user_id: e.user_id,
-        };
+        }];
 
         const forwardMsg = e.isGroup 
         ? await e.group.makeForwardMsg(msgList) 
