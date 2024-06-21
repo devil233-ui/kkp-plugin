@@ -42,7 +42,7 @@ export class PixivImageFetcher extends plugin {
     }
 
     async modifyImageWithPython(imageBuffer, imageName) {
-        const tempImagePath = `./temp_${imageName}.jpg`;
+        const tempImagePath = `./plugins/kkp-plugin/temp/temp_${imageName}.jpg`;
 
         fs.writeFileSync(tempImagePath, imageBuffer);
 

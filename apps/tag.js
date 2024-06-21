@@ -102,7 +102,7 @@ export class SetuImageFetcher extends plugin {
 
                 const modifiedImagePaths = [];
                 for (const [i, imageData] of imageDatas.entries()) {
-                    const imagePath = `./temp_image_${index}_${i}.jpg`;
+                    const imagePath = `./plugins/kkp-plugin/temp/temp_image_${index}_${i}.jpg`;
                     fs.writeFileSync(imagePath, imageData);
                     const modifiedImagePath = await this.modifyImageWithPython(imagePath);
                     modifiedImagePaths.push(modifiedImagePath);
