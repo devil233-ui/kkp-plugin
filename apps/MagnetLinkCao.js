@@ -52,7 +52,7 @@ export class MagnetLink extends plugin {
                     break;
             }
         }
-        const url = `https://www.cilicao.com/list.php?name=${encodeURIComponent(userInput)}&page=1${orderParam}`;
+        const url = `https://www.cilicao.cc/list.php?name=${encodeURIComponent(userInput)}&page=1${orderParam}`;
 
         const browser = await puppeteer.launch(PUPPETEER_CONFIG);
         const page = await browser.newPage();
@@ -81,7 +81,7 @@ export class MagnetLink extends plugin {
 
                     const sjk = match[1];
                     const hash = match[2];
-                    const response = await axios.post('https://www.cilicao.com/ajax2.php', {
+                    const response = await axios.post('https://www.cilicao.cc/ajax2.php', {
                         typenum: 4,
                         md5hash: hash,
                         sjk: sjk
