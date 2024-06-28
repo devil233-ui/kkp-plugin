@@ -47,6 +47,7 @@ schedule.scheduleJob('0 */2 * * *', async () => {
         try {
             const response = await fetch(dingyue(), {
                 method: 'POST',
+                    body: JSON.stringify({
                     key: keyValue,
                     user: Object.keys(data).flatMap(groupId => Object.keys(data[groupId].artists))
                 }),
