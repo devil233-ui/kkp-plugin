@@ -1,6 +1,6 @@
 import plugin from '../../../lib/plugins/plugin.js';
 import schedule from "node-schedule";
-import { dingyue, pid } from '../config/api.js';
+import { dingyue, keyValue, pid } from '../config/api.js';
 import fetch from 'node-fetch';
 import yaml from 'yaml';
 import fs from 'fs';
@@ -47,7 +47,7 @@ schedule.scheduleJob('0 */2 * * *', async () => {
         try {
             const response = await fetch(dingyue(), {
                 method: 'POST',
-                body: JSON.stringify({
+                    key: keyValue,
                     user: Object.keys(data).flatMap(groupId => Object.keys(data[groupId].artists))
                 }),
                 headers: { 'Content-Type': 'application/json' }
