@@ -84,7 +84,6 @@ export class PixivArtistWorksFetcher extends plugin {
     }
 
     async _processArtistWorks(e, isRandom) {
-        if (!e.isGroup) return;
         const match = e.msg.match(isRandom ? /^#?随机(\d+)张(\d+)作品$/ : /^#来(\d+)张(\d+)作品$/);
         if (!match) return;
 
