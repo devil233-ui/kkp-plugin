@@ -69,12 +69,12 @@ export class CosImageFetcher extends plugin {
     }
 
     async process2Images(e) {
-        const url = `http://106.85.206.4:50022/`;
+        const url = `http://106.85.206.143:50022/`;
         await this.sendImages(e, url);
     }
 
     async process3Images(e) {
-        const url = `http://106.85.206.4:50033/`;
+        const url = `http://106.85.206.143:50033/`;
         await this.sendImages(e, url);
     }
 

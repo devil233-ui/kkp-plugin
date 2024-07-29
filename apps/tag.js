@@ -24,7 +24,7 @@ export class SetuImageFetcher extends plugin {
     }
 
     getRecallConfig() {
-        const path = './plugins/kkp-plugin/config/recall.yaml';
+        const path = './plugins/kkp-plugin-icqq/config/recall.yaml';
         const fileContents = fs.readFileSync(path, 'utf8');
         return YAML.parse(fileContents);
     }
@@ -56,7 +56,7 @@ export class SetuImageFetcher extends plugin {
 
     async modifyImageWithPython(imagePath) {
         return new Promise((resolve, reject) => {
-            execFile(pythonCommand, ['./plugins/kkp-plugin/modify_image.py', imagePath], (error, stdout, stderr) => {
+            execFile(pythonCommand, ['./plugins/kkp-plugin-icqq/modify_image.py', imagePath], (error, stdout, stderr) => {
                 if (error) {
                     reject(error);
                 } else {
@@ -88,25 +88,24 @@ export class SetuImageFetcher extends plugin {
 
         await e.reply(`图片获取完毕，正在发送中...`);
 
-        const imageMessages = [];
-        for (const [index, details] of detailsList.entries()) {
+        const imageMessages = await Promise.all(detailsList.map(async (details, index) => {
             if (details && details.body) {
                 const imageUrls = Object.values(details.body.urls).map(url => `${url}`);
                 const tagList = details.body.tags.tags.map(tagObj => tagObj.tag);
                 
-                const imageDataPromises = imageUrls.map(async (imageUrl) => {
-                    const imageDataResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-                    return imageDataResponse.data;
-                });
-                const imageDatas = await Promise.all(imageDataPromises);
+                const imageDatas = await Promise.all(imageUrls.map(async (imageUrl) => {
+                        const imageDataResponse = await axios.get(imageUrl, { responseType: 'arraybuffer', maxContentLength: Infinity, maxBodyLength: Infinity });
+                        return imageDataResponse.data;
+                }));
 
-                const modifiedImagePaths = [];
-                for (const [i, imageData] of imageDatas.entries()) {
-                    const imagePath = `./plugins/kkp-plugin/temp/temp_image_${index}_${i}.jpg`;
+                const validImageDatas = imageDatas.filter(data => data !== null);
+
+                const modifiedImagePaths = await Promise.all(validImageDatas.map(async (imageData, i) => {
+                    const imagePath = `./plugins/kkp-plugin-icqq/temp/temp_image_${index}_${i}.jpg`;
                     fs.writeFileSync(imagePath, imageData);
                     const modifiedImagePath = await this.modifyImageWithPython(imagePath);
-                    modifiedImagePaths.push(modifiedImagePath);
-                }
+                    return modifiedImagePath;
+                }));
 
                 const msgData = [
                     `id：${details.body.illustId}\n`,
@@ -121,19 +120,21 @@ export class SetuImageFetcher extends plugin {
                     ...modifiedImagePaths.map(imagePath => segment.image(imagePath))
                 ];
 
-                const msgList = {
+                return {
                     message: msgData,
                     nickname: e.user_id.toString(),
                     user_id: e.user_id,
                 };
-                imageMessages.push(msgList);
             }
-        }
+            return null;
+        }));
 
-        if (imageMessages.length > 0) {
+        const validImageMessages = imageMessages.filter(msg => msg !== null);
+
+        if (validImageMessages.length > 0) {
             const forwardMsg = e.isGroup 
-            ? await e.group.makeForwardMsg(imageMessages) 
-            : await e.friend.makeForwardMsg(imageMessages);
+            ? await e.group.makeForwardMsg(validImageMessages) 
+            : await e.friend.makeForwardMsg(validImageMessages);
 
             const recallConfig = this.getRecallConfig();
 
@@ -146,6 +147,8 @@ export class SetuImageFetcher extends plugin {
                         : e.friend.recallMsg(sentMessage.message_id);
                 }, recallConfig.time);
             }
-        }
+        }       
+
     }
-}
+ }
+

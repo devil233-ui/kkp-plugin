@@ -23,11 +23,11 @@ const getFrameworkName = () => {
 
 const keyValue = configData.masterQQ[0]; 
 const magnetURL = (matchedMagnet) => `https:${String.fromCharCode(47)}${String.fromCharCode(47)}whatslink${String.fromCharCode(46)}info${String.fromCharCode(47)}api${String.fromCharCode(47)}v1${String.fromCharCode(47)}link?url=${encodeURIComponent(matchedMagnet)}`; 
-const obscuredIP = "165.154.69.4";
-const pid = (pid) => `http://${obscuredIP}:50000/pixiv?pid=${pid}`;
+
+const pid = (pid) => `https://pid.kkndp.cn/pixiv?pid=${pid}`;
 const dingyue = () => `http://165.154.69.4:40055`;
-const user = (artistId) => `http://${obscuredIP}:50000/user?user=${artistId}`;
-const tag = (tagValue) => `http://${obscuredIP}:50000/tag?tag=${encodeURIComponent(tagValue)}`;
+const user = (artistId) => `https://pid.kkndp.cn/user?user=${artistId}`;
+const tag = (tagValue) => `https://pid.kkndp.cn/tag?tag=${encodeURIComponent(tagValue)}`;
 
 const dailyRanking = () => `https://pixiv.mokeyjay.com/?r=api/pixiv-json`;
 const setu = (tag, num, r18 = 0) => `https://api.lolicon.app/setu/v2/?r18=${r18}&tag=${encodeURIComponent(tag)}&num=${num}`;
