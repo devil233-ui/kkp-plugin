@@ -43,7 +43,7 @@ export class SetuImageFetcher extends plugin {
         const apiUrl = fetchTag(tagValue);
         try {
             const response = await axios.get(apiUrl);
-            return response.data.body.illustManga.data.map(item => item.id);
+            return response.data.body.data.map(item => item.id);
         } catch (error) {
             return null;
         }
