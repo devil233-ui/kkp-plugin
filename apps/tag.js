@@ -24,7 +24,7 @@ export class SetuImageFetcher extends plugin {
     }
 
     getRecallConfig() {
-        const path = './plugins/kkp-plugin-icqq/config/recall.yaml';
+        const path = './plugins/kkp-plugin/config/recall.yaml';
         const fileContents = fs.readFileSync(path, 'utf8');
         return YAML.parse(fileContents);
     }
@@ -56,7 +56,7 @@ export class SetuImageFetcher extends plugin {
 
     async modifyImageWithPython(imagePath) {
         return new Promise((resolve, reject) => {
-            execFile(pythonCommand, ['./plugins/kkp-plugin-icqq/modify_image.py', imagePath], (error, stdout, stderr) => {
+            execFile(pythonCommand, ['./plugins/kkp-plugin/modify_image.py', imagePath], (error, stdout, stderr) => {
                 if (error) {
                     reject(error);
                 } else {
@@ -101,7 +101,7 @@ export class SetuImageFetcher extends plugin {
                 const validImageDatas = imageDatas.filter(data => data !== null);
 
                 const modifiedImagePaths = await Promise.all(validImageDatas.map(async (imageData, i) => {
-                    const imagePath = `./plugins/kkp-plugin-icqq/temp/temp_image_${index}_${i}.jpg`;
+                    const imagePath = `./plugins/kkp-plugin/temp/temp_image_${index}_${i}.jpg`;
                     fs.writeFileSync(imagePath, imageData);
                     const modifiedImagePath = await this.modifyImageWithPython(imagePath);
                     return modifiedImagePath;
