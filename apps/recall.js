@@ -18,6 +18,14 @@ export class RecallConfigController extends plugin {
                 {
                     reg: '^#?设置p撤回(\\d+)$',
                     fnc: 'setRecallTime'
+                },
+                {
+                    reg: '^#?设置R18模式(0|1|2)$',
+                    fnc: 'setR18Mode'
+                },
+                {
+                    reg: '^#?设置图片偏好(0|1|2)$',
+                    fnc: 'setImagePreference'
                 }
             ]
         });
@@ -30,10 +38,10 @@ export class RecallConfigController extends plugin {
     getRecallConfig() {
         const path = this.getConfigPath();
         if (!fs.existsSync(path)) {
-            return { recall: true, time: 40000 };
+            return { recall: true, time: 40000, mode: 'all', order: 'popular_d' };
         }
         const fileContents = fs.readFileSync(path, 'utf8');
-        return YAML.parse(fileContents) || { recall: true, time: 40000 };
+        return YAML.parse(fileContents) || { recall: true, time: 40000, mode: 'all', order: 'popular_d' };
     }
 
     writeRecallConfig(config) {
@@ -42,31 +50,29 @@ export class RecallConfigController extends plugin {
     }
 
     async toggleRecall(e) {
-
-		if (e.user_id.toString() !== keyValue.toString()) {
-			return;
-		}
+        if (e.user_id.toString() !== keyValue.toString()) {
+            return;
+        }
 
         const [, action] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
         const config = this.getRecallConfig();
 
         if (action === '开启') {
             config.recall = true;
-            await e.reply("已开启kkp撤回功能");
+            await e.reply("已开启撤回功能");
         } else {
             config.recall = false;
-            await e.reply("已关闭kkp撤回功能");
+            await e.reply("已关闭撤回功能");
         }
 
         this.writeRecallConfig(config);
     }
 
     async setRecallTime(e) {
-        
-		if (e.user_id.toString() !== keyValue.toString()) {
-			return;
-		}
-        
+        if (e.user_id.toString() !== keyValue.toString()) {
+            return;
+        }
+
         const [, timeStr] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
         const time = parseInt(timeStr) * 1000;
 
@@ -79,6 +85,34 @@ export class RecallConfigController extends plugin {
         config.time = time;
         this.writeRecallConfig(config);
 
-        await e.reply(`已设置kkp撤回时间为${timeStr}秒`);
+        await e.reply(`已设置撤回时间为${timeStr}秒`);
+    }
+
+    async setR18Mode(e) {
+        if (e.user_id.toString() !== keyValue.toString()) {
+            return;
+        }
+
+        const [, modeStr] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
+        const modeMap = { '0': 'all', '1': 'safe', '2': 'r18' };
+        const config = this.getRecallConfig();
+        config.mode = modeMap[modeStr];
+        this.writeRecallConfig(config);
+
+        await e.reply(`已设置R18模式为${config.mode},/n 0:全部 /n 1:非R18 /n 2:R18`);
+    }
+
+    async setImagePreference(e) {
+        if (e.user_id.toString() !== keyValue.toString()) {
+            return;
+        }
+
+        const [, preferenceStr] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
+        const orderMap = { '0': 'popular_d', '1': 'popular_male_d', '2': 'popular_female_d' };
+        const config = this.getRecallConfig();
+        config.order = orderMap[preferenceStr];
+        this.writeRecallConfig(config);
+
+        await e.reply(`已设置图片偏好为${config.order},/n 0:无偏好 /n 1:男性偏好 /n 2:女性偏好`);
     }
 }

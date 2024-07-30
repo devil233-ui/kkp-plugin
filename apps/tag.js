@@ -40,13 +40,14 @@ export class SetuImageFetcher extends plugin {
     }
 
     async fetchTagSearchResults(tagValue) {
-        const apiUrl = fetchTag(tagValue);
-        try {
-            const response = await axios.get(apiUrl);
-            return response.data.body.data.map(item => item.id);
-        } catch (error) {
-            return null;
-        }
+        const config = this.getRecallConfig();
+        const mode = config.mode || 'all';
+        const order = config.order || 'popular_d';
+        const apiUrl = `${fetchTag(tagValue)}&mode=${mode}&order=${order}`;
+        
+        const response = await axios.get(apiUrl);
+        return response.data.body.data.map(item => item.id);
+
     }
 
     getRandomIds(ids, count) {
@@ -151,4 +152,3 @@ export class SetuImageFetcher extends plugin {
 
     }
  }
-
