@@ -99,7 +99,7 @@ export class RecallConfigController extends plugin {
         config.mode = modeMap[modeStr];
         this.writeRecallConfig(config);
 
-        await e.reply(`已设置R18模式为${config.mode},/n 0:全部 /n 1:非R18 /n 2:R18`);
+        await e.reply(`已设置R18模式为${config.mode},\n 0:全部 \n 1:非R18 \n 2:R18`);
     }
 
     async setImagePreference(e) {
@@ -113,6 +113,6 @@ export class RecallConfigController extends plugin {
         config.order = orderMap[preferenceStr];
         this.writeRecallConfig(config);
 
-        await e.reply(`已设置图片偏好为${config.order},/n 0:无偏好 /n 1:男性偏好 /n 2:女性偏好`);
+        await e.reply(`已设置图片偏好为${config.order},\n 0:无偏好 \n 1:男性偏好 \n 2:女性偏好`);
     }
 }
