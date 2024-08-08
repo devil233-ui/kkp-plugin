@@ -30,7 +30,7 @@ export class PixivArtistWorksFetcher extends plugin {
     }
 
     getRecallConfig() {
-        const path = './plugins/kkp-plugin/config/recall.yaml';
+        const path = './plugins/kkp-plugin-icqq/config/recall.yaml';
         const fileContents = fs.readFileSync(path, 'utf8');
         return YAML.parse(fileContents);
     }
@@ -54,17 +54,15 @@ export class PixivArtistWorksFetcher extends plugin {
     }
 
     async modifyImageWithPython(imageBuffer, imageName) {
-        const tempImagePath = `./plugins/kkp-plugin/temp/temp_${imageName}.jpg`;
+        const tempImagePath = `./plugins/kkp-plugin-icqq/temp/temp_${imageName}.jpg`;
 
-        // Save image buffer to temporary file
         fs.writeFileSync(tempImagePath, imageBuffer);
 
         try {
-            const { stdout } = await execFileAsync(pythonCommand, ['./plugins/kkp-plugin/modify_image.py', tempImagePath]);
+            const { stdout } = await execFileAsync(pythonCommand, ['./plugins/kkp-plugin-icqq/modify_image.py', tempImagePath]);
             const modifiedImagePath = stdout.trim();
             const modifiedImageBuffer = fs.readFileSync(modifiedImagePath);
 
-            // Clean up temporary files
             fs.unlinkSync(tempImagePath);
             fs.unlinkSync(modifiedImagePath);
 
@@ -125,7 +123,6 @@ export class PixivArtistWorksFetcher extends plugin {
     async sendCombinedWorkDetails(e, workDetailsList) {
 
         const combinedMsgData = [];
-        const combinedImageBuffers = [];
 
         for (const details of workDetailsList) {
             const body = details.body;
@@ -143,29 +140,26 @@ export class PixivArtistWorksFetcher extends plugin {
                 `收藏数：${body.bookmarkCount}\n`,
                 `观看数：${body.viewCount}\n`,
                 `tag：${tagList.join(", ")}\n`
-            ];
+            ].join('');
 
-            combinedMsgData.push(...msgData);
-
-            // 使用 Promise.all 并发获取图片数据并进行修改
             const imageDataPromises = imageUrls.map(async (imageUrl, index) => {
                 const imageDataResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
                 return this.modifyImageWithPython(imageDataResponse.data, `image_${index}`);
             });
 
             const modifiedImageBuffers = await Promise.all(imageDataPromises);
-            combinedImageBuffers.push(...modifiedImageBuffers);
+
+            combinedMsgData.push({
+                message: [msgData, ...modifiedImageBuffers.map(buffer => segment.image(buffer))],
+                forward: true
+            });
         }
 
-        // 创建 segment 对象
-        const segmentList = combinedMsgData.concat(combinedImageBuffers.map(buffer => segment.image(buffer)));
-
         const forwardMsg = e.isGroup 
-        ? await e.group.makeForwardMsg([{ message: segmentList }]) 
-        : await e.friend.makeForwardMsg([{ message: segmentList }]);
+        ? await e.group.makeForwardMsg(combinedMsgData) 
+        : await e.friend.makeForwardMsg(combinedMsgData);
 
         const recallConfig = this.getRecallConfig();
-
         const sentMessage = await e.reply(forwardMsg);
 
         if (recallConfig.recall) {
@@ -175,6 +169,7 @@ export class PixivArtistWorksFetcher extends plugin {
                     : e.friend.recallMsg(sentMessage.message_id);
             }, recallConfig.time);
         }
+
     }
 
     shuffleArray(array) {
