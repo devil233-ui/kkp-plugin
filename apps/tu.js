@@ -74,7 +74,7 @@ export class CosImageFetcher extends plugin {
     }
 
     async process3Images(e) {
-        const url = `http://106.85.206.25:50033/`;
+        const url = `http://150.138.79.44:5244/`;
         await this.sendImages(e, url);
     }
 
