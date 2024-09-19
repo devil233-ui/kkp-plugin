@@ -14,7 +14,10 @@ pnpm add axios -w
 ```
 pip install -i https://pypi.tuna.tsinghua.edu.cn/simple pillow
 ```
-在Arch安装
+doker内安装（trss安装的崽）
+```
+docker exec -it TRSS_AllBot /bin/bash
+```
 ```
 pacman -S python-pillow
 ```
