@@ -14,7 +14,10 @@ pnpm add axios -w
 ```
 pip install -i https://pypi.tuna.tsinghua.edu.cn/simple pillow
 ```
-
+在Arch安装
+```
+pacman -S python-pillow
+```
 
 ## ✨ 功能    欢迎加群738166380  
 ![输入图片说明](https://foruda.gitee.com/images/1717359187534988738/93d70d05_11990909.png "屏幕截图")
