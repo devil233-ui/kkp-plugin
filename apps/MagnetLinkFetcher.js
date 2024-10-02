@@ -15,7 +15,7 @@ export class MagnetLinkFetcher extends plugin {
             name: '磁力查询',
             dsc: '根据磁力链接查询文件信息',
             event: 'message',
-            priority: '500',
+            priority: '50',
             rule: [
                 {
                     reg: '^#验车(magnet:.+)$',
