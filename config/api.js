@@ -25,7 +25,7 @@ const keyValue = configData.masterQQ[0];
 const magnetURL = (matchedMagnet) => `https:${String.fromCharCode(47)}${String.fromCharCode(47)}whatslink${String.fromCharCode(46)}info${String.fromCharCode(47)}api${String.fromCharCode(47)}v1${String.fromCharCode(47)}link?url=${encodeURIComponent(matchedMagnet)}`; 
 
 const pid = (pid) => `http://pid.kkndp.cn/pixiv?pid=${pid}`;
-const dingyue = () => `http://165.154.69.4:40055`;
+const dingyue = () => `https://user.kkndp.cn`;
 const user = (artistId) => `http://pid.kkndp.cn/user?user=${artistId}`;
 const tag = (tagValue) => `http://pid.kkndp.cn/tag?tag=${encodeURIComponent(tagValue)}`;
 
