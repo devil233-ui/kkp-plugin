@@ -4,6 +4,7 @@ import fs from 'fs';
 import YAML from 'yaml';
 import { pid, tag as fetchTag } from '../config/api.js';
 import { execFile } from 'child_process';
+import path from 'path';
 
 const pythonCommand = process.platform === 'win32' ? 'python' : 'python3';
 
@@ -67,8 +68,26 @@ export class SetuImageFetcher extends plugin {
         });
     }
 
-    async _processSetuImages(e) {
+    deleteTempFiles() {
+        const tempDir = path.resolve('./plugins/kkp-plugin/temp');
+        fs.readdir(tempDir, (err, files) => {
+            if (err) {
+                console.error('读取temp目录失败：', err);
+                return;
+            }
 
+            files.forEach(file => {
+                const filePath = path.join(tempDir, file);
+                fs.unlink(filePath, err => {
+                    if (err) {
+                        console.error(`删除文件失败：${filePath}`, err);
+                    }
+                });
+            });
+        });
+    }
+
+    async _processSetuImages(e) {
         const [, numStr, tag] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
         const num = parseInt(numStr);
 
@@ -95,8 +114,8 @@ export class SetuImageFetcher extends plugin {
                 const tagList = details.body.tags.tags.map(tagObj => tagObj.tag);
                 
                 const imageDatas = await Promise.all(imageUrls.map(async (imageUrl) => {
-                        const imageDataResponse = await axios.get(imageUrl, { responseType: 'arraybuffer', maxContentLength: Infinity, maxBodyLength: Infinity });
-                        return imageDataResponse.data;
+                    const imageDataResponse = await axios.get(imageUrl, { responseType: 'arraybuffer', maxContentLength: Infinity, maxBodyLength: Infinity });
+                    return imageDataResponse.data;
                 }));
 
                 const validImageDatas = imageDatas.filter(data => data !== null);
@@ -111,7 +130,7 @@ export class SetuImageFetcher extends plugin {
                 const msgData = [
                     `id：${details.body.illustId}\n`,
                     `画师：${details.body.userName}（${details.body.userId}）\n`,
-                    `是否ai：${details.body.aiType === 0 ? '否' : '是'}\n`,
+                    `是否ai：${details.body.aiType === 2? '是' : '否'}\n`,
                     `标题：${details.body.illustTitle}\n`,
                     `上传时间：${details.body.createDate}\n`,
                     `♥：${details.body.likeCount}\n`,
@@ -148,7 +167,8 @@ export class SetuImageFetcher extends plugin {
                         : e.friend.recallMsg(sentMessage.message_id);
                 }, recallConfig.time);
             }
-        }       
 
+            this.deleteTempFiles();
+        }
     }
- }
+}

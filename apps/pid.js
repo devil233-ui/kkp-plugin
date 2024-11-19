@@ -92,12 +92,12 @@ export class PixivImageFetcher extends plugin {
         const msgData = [
             `id：${body.illustId}\n`,
             `画师：${body.userName}（${body.userId}）\n`,
-            `是否ai：${body.aiType === 0 ? '否' : '是'}\n`,
+            `是否ai：${body.aiType === 2? '是' : '否'}\n`,
             `标题：${body.illustTitle}\n`,
             `上传时间：${body.createDate}\n`,
-            `喜欢数：${body.likeCount}\n`,
-            `收藏数：${body.bookmarkCount}\n`,
-            `观看数：${body.viewCount}\n`,
+            `♥：${body.likeCount}\n`,
+            `😊：${body.bookmarkCount}\n`,
+            `👁：${body.viewCount}\n`,
             `tag：${tagList.join(", ")}\n`,
         ].concat(modifiedImageBuffers.map(buffer => segment.image(buffer)));
 

@@ -2,7 +2,7 @@ import plugin from '../../../lib/plugins/plugin.js';
 import axios from 'axios';
 import fs from 'fs';
 import YAML from 'yaml';
-import { pid, user, keyValue } from '../config/api.js';
+import { pid, user } from '../config/api.js';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 
@@ -13,7 +13,7 @@ export class PixivArtistWorksFetcher extends plugin {
     constructor() {
         super({
             name: 'p站画师id获取图片',
-            dsc: 'p站画师id获取图片',
+            dsc: '通过画师ID获取作品图片',
             event: 'message',
             priority: 50,
             rule: [
@@ -40,7 +40,7 @@ export class PixivArtistWorksFetcher extends plugin {
             const response = await axios.get(user(artistId));
             return response.data;
         } catch (error) {
-            throw error;
+            throw new Error(`获取画师信息失败：${error.message}`);
         }
     }
 
@@ -49,7 +49,7 @@ export class PixivArtistWorksFetcher extends plugin {
             const response = await axios.get(pid(pidValue));
             return response.data;
         } catch (error) {
-            throw error;
+            throw new Error(`获取作品信息失败：${error.message}`);
         }
     }
 
@@ -97,7 +97,7 @@ export class PixivArtistWorksFetcher extends plugin {
             const artistData = await this.fetchArtistDetails(artistId);
 
             if (!artistData || artistData.error) {
-                await e.reply('请输入正确的画师id');
+                await e.reply('请输入正确的画师ID');
                 return;
             }
 
@@ -121,55 +121,59 @@ export class PixivArtistWorksFetcher extends plugin {
     }
 
     async sendCombinedWorkDetails(e, workDetailsList) {
-
         const combinedMsgData = [];
 
-        for (const details of workDetailsList) {
+        const imageDataTasks = workDetailsList.map(async (details, index) => {
             const body = details.body;
-            const imageUrls = Object.values(body.urls).map(url => `${url}?key=${keyValue}`);
+            const imageUrls = Object.values(body.urls);
 
             const tagList = body.tags.tags.map(tagObj => tagObj.tag);
 
             const msgData = [
                 `id：${body.illustId}\n`,
                 `画师：${body.userName}（${body.userId}）\n`,
-                `是否ai：${body.aiType === 0 ? '否' : '是'}\n`,
+                `是否ai：${body.aiType === 2 ? '是' : '否'}\n`,
                 `标题：${body.illustTitle}\n`,
                 `上传时间：${body.createDate}\n`,
-                `喜欢数：${body.likeCount}\n`,
-                `收藏数：${body.bookmarkCount}\n`,
-                `观看数：${body.viewCount}\n`,
+                `♥：${body.likeCount}\n`,
+                `😊：${body.bookmarkCount}\n`,
+                `👁：${body.viewCount}\n`,
                 `tag：${tagList.join(", ")}\n`
             ].join('');
 
-            const imageDataPromises = imageUrls.map(async (imageUrl, index) => {
-                const imageDataResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-                return this.modifyImageWithPython(imageDataResponse.data, `image_${index}`);
-            });
+            const imageBuffers = await Promise.all(
+                imageUrls.map(async (imageUrl, i) => {
+                    const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+                    return this.modifyImageWithPython(response.data, `image_${index}_${i}`);
+                })
+            );
 
-            const modifiedImageBuffers = await Promise.all(imageDataPromises);
+            return { msgData, imageBuffers };
+        });
 
+        const resolvedTasks = await Promise.all(imageDataTasks);
+
+        for (const { msgData, imageBuffers } of resolvedTasks) {
             combinedMsgData.push({
-                message: [msgData, ...modifiedImageBuffers.map(buffer => segment.image(buffer))],
+                message: [msgData, ...imageBuffers.map(buffer => segment.image(buffer))],
                 forward: true
             });
         }
 
-        const forwardMsg = e.isGroup 
-        ? await e.group.makeForwardMsg(combinedMsgData) 
-        : await e.friend.makeForwardMsg(combinedMsgData);
+        const forwardMsg = e.isGroup
+            ? await e.group.makeForwardMsg(combinedMsgData)
+            : await e.friend.makeForwardMsg(combinedMsgData);
 
         const recallConfig = this.getRecallConfig();
         const sentMessage = await e.reply(forwardMsg);
 
         if (recallConfig.recall) {
             setTimeout(() => {
-                e.isGroup 
-                    ? e.group.recallMsg(sentMessage.message_id) 
+                e.isGroup
+                    ? e.group.recallMsg(sentMessage.message_id)
                     : e.friend.recallMsg(sentMessage.message_id);
             }, recallConfig.time);
         }
-
     }
 
     shuffleArray(array) {
