@@ -2,19 +2,23 @@ import plugin from '../../../lib/plugins/plugin.js';
 import axios from 'axios';
 import fs from 'fs';
 import YAML from 'yaml';
-import { pid, keyValue } from '../config/api.js';
+import { pid } from '../config/api.js';
+import { execFile } from 'child_process';
+import path from 'path';
 
-export class DailyRankingFetcher extends plugin {
+const pythonCommand = process.platform === 'win32' ? 'python' : 'python3';
+
+export class DailyRankImageFetcher extends plugin {
     constructor() {
         super({
-            name: 'Daily Ranking Fetch',
-            dsc: '每日排行',
+            name: 'Daily Rank Image Fetch',
+            dsc: '获取每日排行图片',
             event: 'message',
-            priority: '500',
+            priority: 500,
             rule: [
                 {
-                    reg: '^#?每日排行$',
-                    fnc: '_processDailyRanking'
+                    reg: '^#?每日排行(\\d+)?$',
+                    fnc: '_processDailyRank'
                 }
             ]
         });
@@ -26,13 +30,13 @@ export class DailyRankingFetcher extends plugin {
         return YAML.parse(fileContents);
     }
 
-    async fetchDailyRankingArtworks() {
-        const apiUrl = 'http://165.154.69.4:40005/';
+    async fetchDailyRankings() {
+        const apiUrl = 'https://pid.kkndp.cn/rank';
         try {
             const response = await axios.get(apiUrl);
-            return response.data.artwork_ids.slice(0, 30);
+            return response.data.rankings;
         } catch (error) {
-            return null;
+            return [];
         }
     }
 
@@ -46,54 +50,115 @@ export class DailyRankingFetcher extends plugin {
         }
     }
 
-    async _processDailyRanking(e) {
-        const artworkIds = await this.fetchDailyRankingArtworks();
+    async modifyImageWithPython(imagePath) {
+        return new Promise((resolve, reject) => {
+            execFile(pythonCommand, ['./plugins/kkp-plugin/modify_image.py', imagePath], (error, stdout, stderr) => {
+                if (error) {
+                    reject(error);
+                } else {
+                    resolve(stdout.trim());
+                }
+            });
+        });
+    }
 
-        if (!artworkIds || artworkIds.length === 0) {
-            await e.reply("每日排行数据获取失败！");
+    deleteTempFiles() {
+        const tempDir = path.resolve('./plugins/kkp-plugin/temp');
+        fs.readdir(tempDir, (err, files) => {
+            if (err) {
+                console.error('读取temp目录失败：', err);
+                return;
+            }
+
+            files.forEach(file => {
+                const filePath = path.join(tempDir, file);
+                fs.unlink(filePath, err => {
+                    if (err) {
+                        console.error(`删除文件失败：${filePath}`, err);
+                    }
+                });
+            });
+        });
+    }
+
+    async _processDailyRank(e) {
+        const match = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
+        const numStr = match[1];
+        const num = numStr ? Math.min(parseInt(numStr), 30) : 10;
+
+        const rankings = await this.fetchDailyRankings();
+        if (rankings.length === 0) {
+            await e.reply("获取每日排行失败，请稍后再试！");
             return;
         }
 
-        // 使用 Promise.all 并发获取图片详情
-        const detailsPromises = artworkIds.map(async (pid) => this.fetchPixivImageDetails(pid));
+        const selectedPids = rankings.slice(0, num);
+        const detailsPromises = selectedPids.map(pid => this.fetchPixivImageDetails(pid));
         const detailsList = await Promise.all(detailsPromises);
 
-        const imageMessages = [];
-        for (const [index, details] of detailsList.entries()) {
+        await e.reply(`图片获取完毕，正在发送中...`);
+
+        const imageMessages = await Promise.all(detailsList.map(async (details, index) => {
             if (details && details.body) {
-                const imageUrls = Object.values(details.body.urls).map(url => `${url}?key=${keyValue}`);
+                const imageUrls = Object.values(details.body.urls).map(url => `${url}`);
                 const tagList = details.body.tags.tags.map(tagObj => tagObj.tag);
+
+                const imageDatas = await Promise.all(imageUrls.map(async (imageUrl) => {
+                    const imageDataResponse = await axios.get(imageUrl, { responseType: 'arraybuffer', maxContentLength: Infinity, maxBodyLength: Infinity });
+                    return imageDataResponse.data;
+                }));
+
+                const validImageDatas = imageDatas.filter(data => data !== null);
+
+                const modifiedImagePaths = await Promise.all(validImageDatas.map(async (imageData, i) => {
+                    const imagePath = `./plugins/kkp-plugin/temp/temp_image_${index}_${i}.jpg`;
+                    fs.writeFileSync(imagePath, imageData);
+                    const modifiedImagePath = await this.modifyImageWithPython(imagePath);
+                    return modifiedImagePath;
+                }));
+
                 const msgData = [
                     `id：${details.body.illustId}\n`,
                     `画师：${details.body.userName}（${details.body.userId}）\n`,
-                    `是否ai：${details.body.aiType === 0 ? '否' : '是'}\n`,
+                    `是否ai：${details.body.aiType === 2 ? '是' : '否'}\n`,
                     `标题：${details.body.illustTitle}\n`,
                     `上传时间：${details.body.createDate}\n`,
-                    `♥：${details.body.likeCount}`,
-                    `😊：${details.body.bookmarkCount}`,
+                    `♥：${details.body.likeCount}\n`,
+                    `😊：${details.body.bookmarkCount}\n`,
                     `👁：${details.body.viewCount}\n`,
-                    `tag：${tagList.join(", ")}\n`
+                    `tag：${tagList.join(", ")}\n`,
+                    ...modifiedImagePaths.map(imagePath => segment.image(imagePath))
                 ];
-                const msgList = {
-                    message: msgData.concat(imageUrls.map(url => segment.image(url))),
-                    nickname: e.user_id.toString(),
-                    user_id: e.user_id
-                };
-                imageMessages.push(msgList);
-            }
-        }
 
-        if (imageMessages.length > 0) {
-            const forwardMsg = await e.group.makeForwardMsg(imageMessages);
-            
+                return {
+                    message: msgData,
+                    nickname: e.user_id.toString(),
+                    user_id: e.user_id,
+                };
+            }
+            return null;
+        }));
+
+        const validImageMessages = imageMessages.filter(msg => msg !== null);
+
+        if (validImageMessages.length > 0) {
+            const forwardMsg = e.isGroup
+                ? await e.group.makeForwardMsg(validImageMessages)
+                : await e.friend.makeForwardMsg(validImageMessages);
+
             const recallConfig = this.getRecallConfig();
 
             const sentMessage = await e.reply(forwardMsg);
+
             if (recallConfig.recall) {
                 setTimeout(() => {
-                    e.group.recallMsg(sentMessage.message_id);
+                    e.isGroup
+                        ? e.group.recallMsg(sentMessage.message_id)
+                        : e.friend.recallMsg(sentMessage.message_id);
                 }, recallConfig.time);
             }
+
+            this.deleteTempFiles();
         }
     }
 }
