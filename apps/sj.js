@@ -1,6 +1,7 @@
 import plugin from '../../../lib/plugins/plugin.js';
 import axios from 'axios';
 import fs from 'fs';
+import YAML from 'yaml';
 import path from 'path';
 
 export class VideoFetcher extends plugin {
@@ -9,7 +10,7 @@ export class VideoFetcher extends plugin {
             name: 'Video',
             dsc: '随机骚鸡视频',
             event: 'message',
-            priority: 50,
+            priority: 30,
             rule: [
                 {
                     reg: '^#?(骚鸡|烧鸡|sj)$',
@@ -39959,6 +39960,12 @@ export class VideoFetcher extends plugin {
             'https://alimov2.a.kwimgs.com/upic/2022/11/04/19/BMjAyMjExMDQxOTQ3NTdfMTIzOTM2NTY5M184Nzk1NjYyNDcyNF8xXzM=_b_B6bc067b9704873bd38e79f38d4ffc9d4.mp4?clientCacheKey=3xwenxju29qrq3a_b.mp4&tt=b&di=8eab7ec8&bp=13414'
         ];
     }
+     
+    getRecallConfig() {
+        const path = './plugins/kkp-plugin/config/recall.yaml';
+        const fileContents = fs.readFileSync(path, 'utf8');
+        return YAML.parse(fileContents);
+    }
 
     // 随机选择一个视频链接
     getRandomVideoUrl() {
@@ -39999,8 +40006,6 @@ export class VideoFetcher extends plugin {
             fs.mkdirSync(tempDir);
         }
 
-        await e.reply('正在获取视频，请稍候...');
-
         try {
             // 下载视频到临时文件
             await this.fetchVideo(videoUrl, tempFilePath);
@@ -40008,18 +40013,15 @@ export class VideoFetcher extends plugin {
             // 创建视频段落
             const videoSegment = segment.video(tempFilePath);
 
-            const messageData = {
-                message: [videoSegment],
-                nickname: e.user_id.toString(),
-                user_id: e.user_id,
-            };
+            await e.reply(videoSegment);
 
-            // 发送合并消息
-            const forwardMsg = e.isGroup
-                ? await e.group.makeForwardMsg([messageData])
-                : await e.friend.makeForwardMsg([messageData]);
-
-            await e.reply(forwardMsg);
+            if (recallConfig.recall) {
+                setTimeout(() => {
+                    e.isGroup 
+                        ? e.group.recallMsg(videoSegment.message_id) 
+                        : e.friend.recallMsg(videoSegment.message_id);
+                }, recallConfig.time);
+            }
         } catch (error) {
             console.error('[Video Fetcher][_processVideo] 错误：', error);
             await e.reply('视频获取失败，请稍后再试！');
