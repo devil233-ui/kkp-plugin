@@ -39998,6 +39998,7 @@ export class VideoFetcher extends plugin {
     }
 
     async _processVideo(e) {
+        const recallConfig = this.getRecallConfig();
         const videoUrl = this.getRandomVideoUrl(); // 随机获取一个视频链接
         const tempDir = path.resolve('./temp');
         const tempFilePath = path.join(tempDir, 'temp_video.mp4');
@@ -40024,7 +40025,6 @@ export class VideoFetcher extends plugin {
             }
         } catch (error) {
             console.error('[Video Fetcher][_processVideo] 错误：', error);
-            await e.reply('视频获取失败，请稍后再试！');
         } finally {
             // 清理临时文件
             this.deleteTempFile(tempFilePath);
