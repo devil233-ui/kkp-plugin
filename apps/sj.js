@@ -39998,7 +39998,6 @@ export class VideoFetcher extends plugin {
     }
 
     async _processVideo(e) {
-        const recallConfig = this.getRecallConfig();
         const videoUrl = this.getRandomVideoUrl(); // 随机获取一个视频链接
         const tempDir = path.resolve('./temp');
         const tempFilePath = path.join(tempDir, 'temp_video.mp4');
@@ -40013,6 +40012,8 @@ export class VideoFetcher extends plugin {
 
             // 创建视频段落
             const videoSegment = segment.video(tempFilePath);
+
+            const recallConfig = this.getRecallConfig();
 
             await e.reply(videoSegment);
 
