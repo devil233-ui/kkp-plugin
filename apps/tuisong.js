@@ -73,7 +73,7 @@ schedule.scheduleJob('0 */2 * * *', async () => {
 										const infoMsg = [
 											`爷爷，您关注的画师：${imgData.body.userName}（${imgData.body.userId}）更新了`,
 											`pid：${imgData.body.illustId}`,
-											`是否ai：${imgData.body.aiType === 0 ? '否' : '是'}`,
+											`是否ai：${imgData.body.aiType === 2 ? '是' : '否'}`,
 											`标题：${imgData.body.illustTitle}`,
 											`上传时间：${imgData.body.createDate}`,
 											`♥：${imgData.body.likeCount},😊：${imgData.body.bookmarkCount},👁：${imgData.body.viewCount}`,
