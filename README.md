@@ -22,5 +22,5 @@ docker exec -it TRSS_AllBot /bin/bash
 pacman -S python-pillow
 ```
 
-## ✨ 功能    欢迎加群738166380  
+## ✨ 功能    欢迎加群1030860570
 ![输入图片说明](https://foruda.gitee.com/images/1717359187534988738/93d70d05_11990909.png "屏幕截图")
