@@ -55,7 +55,7 @@ export class MagnetLinkFetcher extends plugin {
                 'Accept': 'application/json, text/plain, */*',
                 'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
                 'Referer': 'https://whatslink.info/',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0'
             });
 
             let responseData;
@@ -104,7 +104,7 @@ export class MagnetLinkFetcher extends plugin {
                 'Accept': 'application/json, text/plain, */*',
                 'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
                 'Referer': 'https://whatslink.info/',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0'
             });
 
             const response = await page.goto(imageUrl, {
@@ -169,15 +169,17 @@ export class MagnetLinkFetcher extends plugin {
                     throw new Error(response?.error || '无效的响应数据');
                 }
 
-                const msgData = [
-                    `磁力链接：${matchedMagnet}\n\n`,
+                // 构建消息内容数组
+                const msgContent = [
+                    `磁力链接：${matchedMagnet}\n`,
                     `文件名字：${response.name}\n`,
                     `文件类型：${response.file_type}\n`,
                     `文件数量：${response.count}\n`,
                     `文件大小：${(response.size / 1e9).toFixed(1)}GB\n`
                 ];
 
-                let screenshotData = [];
+                // 处理截图
+                let screenshotSegments = [];
                 if (response.screenshots?.length > 0) {
                     const processingPromises = response.screenshots
                         .slice(0, 9)
@@ -185,34 +187,36 @@ export class MagnetLinkFetcher extends plugin {
                             try {
                                 const imageBuffer = await this.fetchImageWithPuppeteer(s.screenshot);
                                 const modifiedBuffer = await this.modifyImageWithPython(imageBuffer, `screenshot_${index}`);
-                                return `base64://${modifiedBuffer.toString('base64')}`;
+                                // 直接返回图片段
+                                return segment.image(modifiedBuffer);
                             } catch (error) {
                                 console.error(`截图处理失败: ${error}`);
                                 return null;
                             }
                         });
 
-                    screenshotData = (await Promise.all(processingPromises)).filter(Boolean);
+                    screenshotSegments = (await Promise.all(processingPromises)).filter(Boolean);
                 }
 
-                if (screenshotData.length === 0) {
-                    screenshotData.push('该磁力无有效视频截图');
+                // 添加截图到消息内容
+                if (screenshotSegments.length > 0) {
+                    // 先添加文本行
+                    msgContent.push(`视频截图：\n`);
+                    
+                    // 然后添加所有图片段
+                    screenshotSegments.forEach(segment => {
+                        msgContent.push(segment);
+                    });
+                } else {
+                    msgContent.push(`该磁力无有效视频截图`);
                 }
 
                 // 构建消息列表
                 const msgList = [{
-                    message: msgData.join(''),
+                    message: msgContent,
                     nickname: e.user_id.toString(),
                     user_id: e.user_id
                 }];
-
-                screenshotData.forEach((screenshot, index) => {
-                    msgList.push({
-                        message: [`截图 ${index + 1}`, "\n", segment.image(screenshot)],
-                        nickname: e.user_id.toString(),
-                        user_id: e.user_id
-                    });
-                });
 
                 // 发送合并转发消息
                 const forwardMsg = e.isGroup 

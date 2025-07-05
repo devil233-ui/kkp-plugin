@@ -5,7 +5,9 @@ import YAML from 'yaml';
 import { pid, tag as fetchTag } from '../config/api.js';
 import { execFile } from 'child_process';
 import path from 'path';
+import { promisify } from 'util';
 
+const execFileAsync = promisify(execFile);
 const pythonCommand = process.platform === 'win32' ? 'python' : 'python3';
 
 export class SetuImageFetcher extends plugin {
@@ -56,16 +58,35 @@ export class SetuImageFetcher extends plugin {
         return shuffled.slice(0, count);
     }
 
-    async modifyImageWithPython(imagePath) {
-        return new Promise((resolve, reject) => {
-            execFile(pythonCommand, ['./plugins/kkp-plugin/modify_image.py', imagePath], (error, stdout, stderr) => {
-                if (error) {
-                    reject(error);
-                } else {
-                    resolve(stdout.trim());
-                }
-            });
-        });
+    async modifyImageWithPython(imageBuffer, imageName) {
+        const tempImagePath = `./plugins/kkp-plugin/temp/temp_${Date.now()}_${imageName}.jpg`;
+        const cleanUp = () => {
+            if (fs.existsSync(tempImagePath)) {
+                fs.unlinkSync(tempImagePath);
+            }
+        };
+
+        try {
+            fs.writeFileSync(tempImagePath, imageBuffer);
+            const { stdout } = await execFileAsync(pythonCommand, [
+                './plugins/kkp-plugin/modify_image.py',
+                tempImagePath
+            ]);
+
+            const modifiedImagePath = stdout.trim();
+            if (!fs.existsSync(modifiedImagePath)) {
+                throw new Error('Python处理图片失败');
+            }
+
+            const modifiedImageBuffer = fs.readFileSync(modifiedImagePath);
+            cleanUp();
+            fs.unlinkSync(modifiedImagePath);
+            
+            return modifiedImageBuffer;
+        } catch (error) {
+            cleanUp();
+            throw error;
+        }
     }
 
     deleteTempFiles() {
@@ -113,20 +134,34 @@ export class SetuImageFetcher extends plugin {
                 const imageUrls = Object.values(details.body.urls).map(url => `${url}`);
                 const tagList = details.body.tags.tags.map(tagObj => tagObj.tag);
                 
-                const imageDatas = await Promise.all(imageUrls.map(async (imageUrl) => {
-                    const imageDataResponse = await axios.get(imageUrl, { responseType: 'arraybuffer', maxContentLength: Infinity, maxBodyLength: Infinity });
-                    return imageDataResponse.data;
+                const imageBuffers = await Promise.all(imageUrls.map(async (imageUrl) => {
+                    try {
+                        const imageDataResponse = await axios.get(imageUrl, { 
+                            responseType: 'arraybuffer',
+                            maxContentLength: Infinity,
+                            maxBodyLength: Infinity
+                        });
+                        return imageDataResponse.data;
+                    } catch (error) {
+                        console.error(`下载图片失败: ${imageUrl}`, error);
+                        return null;
+                    }
                 }));
 
-                const validImageDatas = imageDatas.filter(data => data !== null);
-
-                const modifiedImagePaths = await Promise.all(validImageDatas.map(async (imageData, i) => {
-                    const imagePath = `./plugins/kkp-plugin/temp/temp_image_${index}_${i}.jpg`;
-                    fs.writeFileSync(imagePath, imageData);
-                    const modifiedImagePath = await this.modifyImageWithPython(imagePath);
-                    return modifiedImagePath;
+                const validImageBuffers = imageBuffers.filter(buffer => buffer !== null);
+                
+                const modifiedImageSegments = await Promise.all(validImageBuffers.map(async (buffer, i) => {
+                    try {
+                        const modifiedBuffer = await this.modifyImageWithPython(buffer, `image_${index}_${i}`);
+                        return segment.image(modifiedBuffer);
+                    } catch (error) {
+                        console.error(`图片处理失败:`, error);
+                        return null;
+                    }
                 }));
 
+                const filteredImageSegments = modifiedImageSegments.filter(segment => segment !== null);
+                
                 const msgData = [
                     `id：${details.body.illustId}\n`,
                     `画师：${details.body.userName}（${details.body.userId}）\n`,
@@ -137,7 +172,7 @@ export class SetuImageFetcher extends plugin {
                     `😊：${details.body.bookmarkCount}\n`,
                     `👁：${details.body.viewCount}\n`,
                     `tag：${tagList.join(", ")}\n`,
-                    ...modifiedImagePaths.map(imagePath => segment.image(imagePath))
+                    ...filteredImageSegments
                 ];
 
                 return {
@@ -152,23 +187,30 @@ export class SetuImageFetcher extends plugin {
         const validImageMessages = imageMessages.filter(msg => msg !== null);
 
         if (validImageMessages.length > 0) {
-            const forwardMsg = e.isGroup 
-            ? await e.group.makeForwardMsg(validImageMessages) 
-            : await e.friend.makeForwardMsg(validImageMessages);
+            try {
+                const forwardMsg = e.isGroup 
+                    ? await e.group.makeForwardMsg(validImageMessages) 
+                    : await e.friend.makeForwardMsg(validImageMessages);
 
-            const recallConfig = this.getRecallConfig();
+                const recallConfig = this.getRecallConfig();
 
-            const sentMessage = await e.reply(forwardMsg);
+                const sentMessage = await e.reply(forwardMsg);
 
-            if (recallConfig.recall) {
-                setTimeout(() => {
-                    e.isGroup 
-                        ? e.group.recallMsg(sentMessage.message_id) 
-                        : e.friend.recallMsg(sentMessage.message_id);
-                }, recallConfig.time);
+                if (recallConfig.recall) {
+                    setTimeout(() => {
+                        if (e.isGroup) {
+                            e.group.recallMsg(sentMessage.message_id);
+                        } else {
+                            e.friend.recallMsg(sentMessage.message_id);
+                        }
+                    }, recallConfig.time);
+                }
+
+                this.deleteTempFiles();
+            } catch (error) {
+                console.error('发送消息失败:', error);
+                await e.reply('消息发送失败');
             }
-
-            this.deleteTempFiles();
         }
     }
 }

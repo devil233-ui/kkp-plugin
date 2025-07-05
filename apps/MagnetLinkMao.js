@@ -46,60 +46,84 @@ export class MagnetLink extends plugin {
         const resultCount = parseInt(match[7]) || 10;
 
         const urls = [
-            `https://pxtnscwx.clm441.buzz/search-${userInput}-${fileType}-${orderType}-1.html`,
-            `https://lchpdvrt.clm442.buzz/search-${userInput}-${fileType}-${orderType}-1.html`,
-            `https://gwrlagua.clm443.buzz/search-${userInput}-${fileType}-${orderType}-1.html`
+            `https://lngcqpst.8800481.xyz/search-${userInput}-${fileType}-${orderType}-1.html`,
+            `https://dokljqwm.8800483.xyz/search-${userInput}-${fileType}-${orderType}-1.html`,
+            `https://dheflfyw.8800485.xyz/search-${userInput}-${fileType}-${orderType}-1.html`
         ];
 
-        const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+        const browser = await puppeteer.launch({ 
+            args: ['--no-sandbox', '--disable-setuid-sandbox'],
+            headless: 'new'
+        });
         let page;
 
         for (let i = 0; i < urls.length; i++) {
             try {
                 page = await browser.newPage();
-                await page.goto(urls[i], { waitUntil: 'load', timeout: 7000 });
-                await page.waitForTimeout(5000);
+                // 设置用户代理
+                await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0');
+                
+                await page.goto(urls[i], { 
+                    waitUntil: 'networkidle2', 
+                    timeout: 15000 
+                });
+                
+                // 等待结果容器出现
+                await page.waitForSelector('.ssbox', { timeout: 10000 }).catch(() => {
+                    console.log('结果容器未找到，可能无结果');
+                    return null;
+                });
 
-                const searchResults = await page.$$('.sbar');
-                if (searchResults.length === 0) {
-                    await this.reply('搜索失败，正在尝试下个链接');
+                // 获取所有结果项
+                const resultItems = await page.$$('.ssbox');
+                if (resultItems.length === 0) {
+                    await this.reply('未找到搜索结果，尝试下个链接');
                     await page.close();
                     continue;
                 }
 
-                const titleElements = await page.$$eval('h3 > a', links => links.map(link => link.innerText));
-                const matches = await page.$$eval('.sbar', divs => divs.map(div => div.innerHTML));
-
-                if (matches) {
-                    let results = [];
-                    for (let i = 0; i < resultCount && i < matches.length; i++) {
-                        let match = matches[i];
-                        let title = titleElements[i];
-                        let magnetLink = match.match(/magnet:\?xt=[^"]+/)[0];
-                        let addedTime = match.match(/添加时间:<b>([^<]+)<\/b>/)[1];
-                        let size = match.match(/大小:<b class="cpill yellow-pill">([^<]+)<\/b>/)[1];
-                        let recentDownload = match.match(/最近下载:<b>([^<]+)<\/b>/)[1];
-                        let heat = match.match(/热度:<b>([^<]+)<\/b>/)[1];
-                        results.push({ user_id: e.user_id, nickname: e.user_id, message: `${title}\n\n${magnetLink}\n\n添加时间：${addedTime}\n大小：${size}\n最近下载：${recentDownload}\n热度：${heat}` });
-                    }
-                    const forwardMsg = await e.group.makeForwardMsg(results);
-                    await this.reply(forwardMsg);
-                    await browser.close();
-                    return;
-                } else {
-                    await this.reply("未找到磁力链接");
-                    await page.close();
-                    continue;
+                const results = [];
+                for (let j = 0; j < Math.min(resultCount, resultItems.length); j++) {
+                    const item = resultItems[j];
+                    
+                    // 提取标题 (移除分类标签)
+                    const title = await item.$eval('h3 a', el => {
+                        return el.textContent.replace(/^\[[^\]]+\]\s*/, '').trim();
+                    });
+                    
+                    // 提取磁力链接
+                    const magnetLink = await item.$eval('.sbar a[href^="magnet:"]', el => el.href);
+                    
+                    // 提取元数据
+                    const addedTime = await item.$eval('.sbar span:nth-child(2) b', el => el.textContent);
+                    const size = await item.$eval('.sbar span:nth-child(3) b', el => el.textContent);
+                    const recentDownload = await item.$eval('.sbar span:nth-child(4) b', el => el.textContent);
+                    const heat = await item.$eval('.sbar span:nth-child(5) b', el => el.textContent);
+                    
+                    results.push({ 
+                        user_id: e.user_id, 
+                        nickname: e.user_id, 
+                        message: `${title}\n\n${magnetLink}\n\n添加时间：${addedTime}\n大小：${size}\n最近下载：${recentDownload}\n热度：${heat}` 
+                    });
                 }
-            }
-            catch (error) {
+
+                const forwardMsg = await e.group.makeForwardMsg(results);
+                await this.reply(forwardMsg);
+                await browser.close();
+                return;
+                
+            } catch (error) {
                 console.log(`在URL ${urls[i]} 上出现错误：${error.toString()}`);
-                await page.close();
-                continue;
+                if (page && !page.isClosed()) {
+                    await page.close();
+                }
             }
         }
-        await this.reply('所有链接均无搜索结果');
-        await browser.close();
+        
+        await this.reply('未找到搜索结果');
+        if (browser) {
+            await browser.close();
+        }
     }
 
     fileTypeMap = {
