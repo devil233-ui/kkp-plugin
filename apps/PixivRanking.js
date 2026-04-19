@@ -2,7 +2,7 @@ import plugin from '../../../lib/plugins/plugin.js';
 import axios from 'axios';
 import fs from 'fs';
 import YAML from 'yaml';
-import { pid } from '../config/api.js';
+import { pid, dailyRanking } from '../config/api.js';
 import { execFile } from 'child_process';
 import path from 'path';
 
@@ -26,16 +26,41 @@ export class DailyRankImageFetcher extends plugin {
 
     getRecallConfig() {
         const path = './plugins/kkp-plugin/config/recall.yaml';
-        const fileContents = fs.readFileSync(path, 'utf8');
-        return YAML.parse(fileContents);
+        try {
+            if (fs.existsSync(path)) {
+                const fileContents = fs.readFileSync(path, 'utf8');
+                return YAML.parse(fileContents);
+            }
+        } catch (e) {
+            console.error('读取recall配置失败：', e);
+        }
+        return { recall: false, time: 0 }; // 返回默认配置
     }
 
     async fetchDailyRankings() {
-        const apiUrl = 'https://pid.kkndp.cn/rank';
+        // 建议优先尝试 api.js 里的接口，或者保留当前地址进行排查
+        // const apiUrl = 'https://pid.kkndp.cn/rank'; 
+        const apiUrl = dailyRanking();
         try {
-            const response = await axios.get(apiUrl);
-            return response.data.rankings;
+            const response = await axios.get(apiUrl, {
+                headers: { 'User-Agent': 'Yunzai-Bot' },
+                timeout: 5000
+            });
+
+            // 关键：打印原始返回数据，方便一眼看出结构是否变化
+            // logger.mark(`[kkp-plugin] 每日排行接口原始响应：${JSON.stringify(response.data)}`);
+            logger.info(apiUrl)
+
+            // 适配 mokeyjay 接口格式：从 data 数组中提取 id
+            if (response.data?.data && Array.isArray(response.data.data)) {
+                return response.data.data.map(item => item.id);
+            }
+
+            // 兼容原有或其他接口格式
+            let res = response.data?.rankings || response.data;
+            return Array.isArray(res) ? res : [];
         } catch (error) {
+            logger.error(`[kkp-plugin] 每日排行接口请求失败：${error.message}`);
             return [];
         }
     }
@@ -82,11 +107,16 @@ export class DailyRankImageFetcher extends plugin {
     }
 
     async _processDailyRank(e) {
+        const tempDir = './plugins/kkp-plugin/temp';
+        if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
+        }
         const match = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
         const numStr = match[1];
         const num = numStr ? Math.min(parseInt(numStr), 30) : 10;
 
         const rankings = await this.fetchDailyRankings();
+        logger.info(`[kkp-plugin] 正在处理每日排行，获取到 PIDs 数量：${rankings?.length || 0}`);
         if (rankings.length === 0) {
             await e.reply("获取每日排行失败，请稍后再试！");
             return;
@@ -100,7 +130,7 @@ export class DailyRankImageFetcher extends plugin {
 
         const imageMessages = await Promise.all(detailsList.map(async (details, index) => {
             if (details && details.body) {
-                const imageUrls = Object.values(details.body.urls).map(url => `${url}`);
+                const imageUrls = [details.body.urls.regular || Object.values(details.body.urls)[0]];
                 const tagList = details.body.tags.tags.map(tagObj => tagObj.tag);
 
                 const imageDatas = await Promise.all(imageUrls.map(async (imageUrl) => {
@@ -127,7 +157,7 @@ export class DailyRankImageFetcher extends plugin {
                     `😊：${details.body.bookmarkCount}\n`,
                     `👁：${details.body.viewCount}\n`,
                     `tag：${tagList.join(", ")}\n`,
-                    ...modifiedImagePaths.map(imagePath => segment.image(imagePath))
+                    ...modifiedImagePaths.map(imagePath => (global.segment || segment).image(imagePath))
                 ];
 
                 return {
