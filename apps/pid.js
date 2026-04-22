@@ -1,44 +1,41 @@
-import plugin from '../../../lib/plugins/plugin.js';
-import axios from 'axios';
-import fs from 'fs';
-import YAML from 'yaml';
-import crypto from 'crypto';
-import { pid as pidAPI } from '../config/api.js';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
+import plugin from "../../../lib/plugins/plugin.js";
+import axios from "axios";
+import fs from "fs";
+import YAML from "yaml";
+import crypto from "crypto";
+import { pid as pidAPI } from "../config/api.js";
+import { execFile } from "child_process";
+import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
-const pythonCommand = process.platform === 'win32' ? 'python' : 'python3';
+const pythonCommand = process.platform === "win32" ? "python" : "python3";
 
 export class PixivImageFetcher extends plugin {
     constructor() {
         super({
-            name: '获取p站图',
-            dsc: '获取p站图',
-            event: 'message',
+            name: "获取p站图",
+            dsc: "获取p站图",
+            event: "message",
             priority: 500,
             rule: [
                 {
-                    reg: '^#?pid(\\d+)$',
-                    fnc: 'processPixivImages'
+                    reg: "^#?pid(\\d+)$",
+                    fnc: "processPixivImages"
                 }
             ]
         });
     }
     
     getRecallConfig() {
-        const path = './plugins/kkp-plugin/config/recall.yaml';
-        const fileContents = fs.readFileSync(path, 'utf8');
+        const path = "./plugins/kkp-plugin/config/recall.yaml";
+        const fileContents = fs.readFileSync(path, "utf8");
         return YAML.parse(fileContents);
     }
-
+    
+    //async 函数中，await 失败时的错误本来就会自动向上层抛出，所以你写的这层 try/catch 是完全多余的脱裤子放屁操作
     async fetchImageDetails(url) {
-        try {
-            const response = await axios.get(url);
-            return response.data;
-        } catch (error) {
-            throw error;
-        }
+        const response = await axios.get(url);
+        return response.data;
     }
 
     async modifyImageWithPython(imageBuffer, imageName) {
@@ -47,7 +44,7 @@ export class PixivImageFetcher extends plugin {
         fs.writeFileSync(tempImagePath, imageBuffer);
 
         try {
-            const { stdout } = await execFileAsync(pythonCommand, ['./plugins/kkp-plugin/modify_image.py', tempImagePath]);
+            const { stdout } = await execFileAsync(pythonCommand, [ "./plugins/kkp-plugin/modify_image.py", tempImagePath ]);
             const modifiedImagePath = stdout.trim();
             const modifiedImageBuffer = fs.readFileSync(modifiedImagePath);
 
@@ -82,8 +79,8 @@ export class PixivImageFetcher extends plugin {
         const imageUrls = Object.values(body.urls).map(url => `${url}`);
         const tagList = body.tags.tags.map(tagObj => tagObj.tag);
 
-        const imageDataPromises = imageUrls.map(async (imageUrl, index) => {
-            const imageDataResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+        const imageDataPromises = imageUrls.map(async(imageUrl, index) => {
+            const imageDataResponse = await axios.get(imageUrl, { responseType: "arraybuffer" });
             return this.modifyImageWithPython(imageDataResponse.data, `image_${index}`);
         });
 
@@ -92,7 +89,7 @@ export class PixivImageFetcher extends plugin {
         const msgData = [
             `id：${body.illustId}\n`,
             `画师：${body.userName}（${body.userId}）\n`,
-            `是否ai：${body.aiType === 2? '是' : '否'}\n`,
+            `是否ai：${body.aiType === 2? "是" : "否"}\n`,
             `标题：${body.illustTitle}\n`,
             `上传时间：${body.createDate}\n`,
             `♥：${body.likeCount}\n`,
@@ -101,11 +98,13 @@ export class PixivImageFetcher extends plugin {
             `tag：${tagList.join(", ")}\n`,
         ].concat(modifiedImageBuffers.map(buffer => segment.image(buffer)));
 
-        const msgList = [{
+        const msgList = [
+{
             message: msgData,
             nickname: e.user_id.toString(),
             user_id: e.user_id,
-        }];
+        }
+];
 
         const forwardMsg = e.isGroup 
         ? await e.group.makeForwardMsg(msgList) 

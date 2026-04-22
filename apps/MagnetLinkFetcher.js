@@ -1,45 +1,45 @@
-import plugin from '../../../lib/plugins/plugin.js';
-import puppeteer from 'puppeteer';
-import fs from 'fs';
-import YAML from 'yaml';
-import { magnetURL } from '../config/api.js';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
+import plugin from "../../../lib/plugins/plugin.js";
+import puppeteer from "puppeteer";
+import fs from "fs";
+import YAML from "yaml";
+import { magnetURL } from "../config/api.js";
+import { execFile } from "child_process";
+import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
-const pythonCommand = process.platform === 'win32' ? 'python' : 'python3';
+const pythonCommand = process.platform === "win32" ? "python" : "python3";
 
 export class MagnetLinkFetcher extends plugin {
     constructor() {
         super({
-            name: '磁力查询',
-            dsc: '根据磁力链接查询文件信息',
-            event: 'message',
-            priority: '50',
+            name: "磁力查询",
+            dsc: "根据磁力链接查询文件信息",
+            event: "message",
+            priority: "50",
             rule: [
                 {
-                    reg: '^#验车(magnet:.+)$',
-                    fnc: 'processMagnetLink'
+                    reg: "^#验车(magnet:.+)$",
+                    fnc: "processMagnetLink"
                 }
             ]
         });
     }
 
     getRecallConfig() {
-        const path = './plugins/kkp-plugin/config/recall.yaml';
-        const fileContents = fs.readFileSync(path, 'utf8');
+        const path = "./plugins/kkp-plugin/config/recall.yaml";
+        const fileContents = fs.readFileSync(path, "utf8");
         return YAML.parse(fileContents);
     }
 
     async _launchBrowser() {
         return await puppeteer.launch({
-            headless: 'new',
+            headless: "new",
             args: [
-                '--disable-gpu',
-                '--disable-dev-shm-usage',
-                '--disable-setuid-sandbox',
-                '--no-sandbox',
-                '--window-size=1920,1080'
+                "--disable-gpu",
+                "--disable-dev-shm-usage",
+                "--disable-setuid-sandbox",
+                "--no-sandbox",
+                "--window-size=1920,1080"
             ],
             timeout: 60000
         });
@@ -50,43 +50,43 @@ export class MagnetLinkFetcher extends plugin {
         try {
             browser = await this._launchBrowser();
             const page = await browser.newPage();
-            
+
             await page.setExtraHTTPHeaders({
-                'Accept': 'application/json, text/plain, */*',
-                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
-                'Referer': 'https://whatslink.info/',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0'
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
+                "Referer": "https://whatslink.info/",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0"
             });
 
             let responseData;
-            await page.goto(url, { 
-                waitUntil: 'domcontentloaded',
+            await page.goto(url, {
+                waitUntil: "domcontentloaded",
                 timeout: 60000
             });
 
             // 双重解析策略
             try {
-                const jsonContent = await page.$eval('div[hidden="true"]', div => div.textContent);
+                const jsonContent = await page.$eval("div[hidden=\"true\"]", div => div.textContent);
                 responseData = JSON.parse(jsonContent);
             } catch (parseError) {
                 responseData = await page.evaluate(() => {
                     try {
                         return JSON.parse(document.body.innerText);
-                    } catch(e) {
+                    } catch (e) {
                         return { error: "数据解析失败" };
                     }
                 });
             }
 
             // 验证响应数据
-            if (!responseData || typeof responseData !== 'object') {
-                throw new Error('无效的响应数据格式');
+            if (!responseData || typeof responseData !== "object") {
+                throw new Error("无效的响应数据格式");
             }
 
             return responseData;
         } catch (error) {
-            console.error('Puppeteer操作失败:', error);
-            throw new Error(`网站访问失败: ${error.message}`);
+            console.error("Puppeteer操作失败:", error);
+            throw new Error(`网站访问失败: ${error.message}`, { cause: error });
         } finally {
             if (browser) {
                 await browser.close();
@@ -99,23 +99,23 @@ export class MagnetLinkFetcher extends plugin {
         try {
             browser = await this._launchBrowser();
             const page = await browser.newPage();
-            
+
             await page.setExtraHTTPHeaders({
-                'Accept': 'application/json, text/plain, */*',
-                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
-                'Referer': 'https://whatslink.info/',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0'
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
+                "Referer": "https://whatslink.info/",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0"
             });
 
             const response = await page.goto(imageUrl, {
-                waitUntil: 'domcontentloaded',
+                waitUntil: "domcontentloaded",
                 timeout: 30000
             });
-            
+
             if (!response.ok()) {
                 throw new Error(`图片下载失败: ${response.status()}`);
             }
-            
+
             return await response.buffer();
         } finally {
             if (browser) {
@@ -135,19 +135,19 @@ export class MagnetLinkFetcher extends plugin {
         try {
             fs.writeFileSync(tempImagePath, imageBuffer);
             const { stdout } = await execFileAsync(pythonCommand, [
-                './plugins/kkp-plugin/modify_image.py',
+                "./plugins/kkp-plugin/modify_image.py",
                 tempImagePath
             ]);
 
             const modifiedImagePath = stdout.trim();
             if (!fs.existsSync(modifiedImagePath)) {
-                throw new Error('Python处理图片失败');
+                throw new Error("Python处理图片失败");
             }
 
             const modifiedImageBuffer = fs.readFileSync(modifiedImagePath);
             cleanUp();
             fs.unlinkSync(modifiedImagePath);
-            
+
             return modifiedImageBuffer;
         } catch (error) {
             cleanUp();
@@ -158,7 +158,7 @@ export class MagnetLinkFetcher extends plugin {
     async processMagnetLink(e) {
         let retryCount = 3;
         const retryDelay = 2000;
-        
+
         while (retryCount-- > 0) {
             try {
                 const matchedMagnet = e.msg.match(/^#验车(magnet:.+)$/)[1];
@@ -166,7 +166,7 @@ export class MagnetLinkFetcher extends plugin {
 
                 const response = await this.fetchWithPuppeteer(url);
                 if (!response || response.error) {
-                    throw new Error(response?.error || '无效的响应数据');
+                    throw new Error(response?.error || "无效的响应数据");
                 }
 
                 // 构建消息内容数组
@@ -183,7 +183,7 @@ export class MagnetLinkFetcher extends plugin {
                 if (response.screenshots?.length > 0) {
                     const processingPromises = response.screenshots
                         .slice(0, 9)
-                        .map(async (s, index) => {
+                        .map(async(s, index) => {
                             try {
                                 const imageBuffer = await this.fetchImageWithPuppeteer(s.screenshot);
                                 const modifiedBuffer = await this.modifyImageWithPython(imageBuffer, `screenshot_${index}`);
@@ -201,26 +201,28 @@ export class MagnetLinkFetcher extends plugin {
                 // 添加截图到消息内容
                 if (screenshotSegments.length > 0) {
                     // 先添加文本行
-                    msgContent.push(`视频截图：\n`);
-                    
+                    msgContent.push("视频截图：\n");
+
                     // 然后添加所有图片段
                     screenshotSegments.forEach(segment => {
                         msgContent.push(segment);
                     });
                 } else {
-                    msgContent.push(`该磁力无有效视频截图`);
+                    msgContent.push("该磁力无有效视频截图");
                 }
 
                 // 构建消息列表
-                const msgList = [{
-                    message: msgContent,
-                    nickname: e.user_id.toString(),
-                    user_id: e.user_id
-                }];
+                const msgList = [
+                    {
+                        message: msgContent,
+                        nickname: e.user_id.toString(),
+                        user_id: e.user_id
+                    }
+                ];
 
                 // 发送合并转发消息
-                const forwardMsg = e.isGroup 
-                    ? await e.group.makeForwardMsg(msgList) 
+                const forwardMsg = e.isGroup
+                    ? await e.group.makeForwardMsg(msgList)
                     : await e.friend.makeForwardMsg(msgList);
 
                 // 处理消息撤回
@@ -229,8 +231,8 @@ export class MagnetLinkFetcher extends plugin {
 
                 if (recallConfig.recall) {
                     setTimeout(() => {
-                        e.isGroup 
-                            ? e.group.recallMsg(sentMessage.message_id) 
+                        e.isGroup
+                            ? e.group.recallMsg(sentMessage.message_id)
                             : e.friend.recallMsg(sentMessage.message_id);
                     }, recallConfig.time).unref();
                 }

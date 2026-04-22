@@ -1,23 +1,23 @@
-import plugin from '../../../lib/plugins/plugin.js';
-import axios from 'axios';
-import fs from 'fs';
-import YAML from 'yaml';
-import path from 'path';
-import { user, keyValue } from '../config/api.js';
+import plugin from "../../../lib/plugins/plugin.js";
+import axios from "axios";
+import fs from "fs";
+import YAML from "yaml";
+import path from "path";
+import { user, keyValue } from "../config/api.js";
 
 export class ArtistSubscription extends plugin {
     constructor() {
         super({
-            name: '画师订阅与推送',
-            dsc: '订阅画师并控制P站推送',
-            event: 'message.group',
+            name: "画师订阅与推送",
+            dsc: "订阅画师并控制P站推送",
+            event: "message.group",
             priority: 50,
             rule: [
-                { reg: '^#订阅画师(\\d+)$', fnc: 'subscribeArtist' },
-                { reg: '^#取消订阅(\\d+)$', fnc: 'unsubscribeArtist' },
-                { reg: '^#订阅列表$', fnc: 'listSubscribedArtists' },
-                { reg: '^#开启p推送$', fnc: 'enablePush' },
-                { reg: '^#关闭p推送$', fnc: 'disablePush' }
+                { reg: "^#订阅画师(\\d+)$", fnc: "subscribeArtist" },
+                { reg: "^#取消订阅(\\d+)$", fnc: "unsubscribeArtist" },
+                { reg: "^#订阅列表$", fnc: "listSubscribedArtists" },
+                { reg: "^#开启p推送$", fnc: "enablePush" },
+                { reg: "^#关闭p推送$", fnc: "disablePush" }
             ]
         });
     }
@@ -31,17 +31,17 @@ export class ArtistSubscription extends plugin {
     }
 
     loadData() {
-        const filePath = './plugins/kkp-plugin/config/dingyue.yaml';
+        const filePath = "./plugins/kkp-plugin/config/dingyue.yaml";
         if (!fs.existsSync(filePath)) return {};
-        const fileContents = fs.readFileSync(filePath, 'utf8');
+        const fileContents = fs.readFileSync(filePath, "utf8");
         return YAML.parse(fileContents) || {};
     }
 
     saveData(data) {
-        const filePath = './plugins/kkp-plugin/config/dingyue.yaml';
+        const filePath = "./plugins/kkp-plugin/config/dingyue.yaml";
         this.ensureDirectoryExistence(filePath);
         const yamlContent = YAML.stringify(data);
-        fs.writeFileSync(filePath, yamlContent, 'utf8');
+        fs.writeFileSync(filePath, yamlContent, "utf8");
     }
 
     async subscribeArtist(e) {
@@ -53,12 +53,12 @@ export class ArtistSubscription extends plugin {
         if (!data[groupId]) data[groupId] = { pushEnabled: false, artists: {} };
 
         if (Object.keys(data).length > 5) {
-            await e.reply('已达到群订阅上限！');
+            await e.reply("已达到群订阅上限！");
             return;
         }
 
         if (Object.keys(data[groupId].artists).length >= 20) {
-            await e.reply('该群已达到画师订阅上限！');
+            await e.reply("该群已达到画师订阅上限！");
             return;
         }
 
@@ -129,7 +129,7 @@ export class ArtistSubscription extends plugin {
         }
 
         let response = "订阅列表：\n";
-        for (const [artistId, artistName] of Object.entries(data[groupId].artists)) {
+        for (const [ artistId, artistName ] of Object.entries(data[groupId].artists)) {
             response += `${artistName}  ${artistId}\n`;
         }
 
@@ -145,9 +145,9 @@ export class ArtistSubscription extends plugin {
         if (!data[groupId].pushEnabled) {
             data[groupId].pushEnabled = true;
             this.saveData(data);
-            await e.reply('已开启p推送。');
+            await e.reply("已开启p推送。");
         } else {
-            await e.reply('已经开启了p推送。');
+            await e.reply("已经开启了p推送。");
         }
     }
 
@@ -160,9 +160,9 @@ export class ArtistSubscription extends plugin {
         if (data[groupId].pushEnabled) {
             data[groupId].pushEnabled = false;
             this.saveData(data);
-            await e.reply('已关闭p推送。');
+            await e.reply("已关闭p推送。");
         } else {
-            await e.reply('尚未开启p推送，无需关闭。');
+            await e.reply("尚未开启p推送，无需关闭。");
         }
     }
 }

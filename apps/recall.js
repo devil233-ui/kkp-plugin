@@ -1,47 +1,47 @@
-import plugin from '../../../lib/plugins/plugin.js';
-import fs from 'fs';
-import YAML from 'yaml';
-import { keyValue } from '../config/api.js';
+import plugin from "../../../lib/plugins/plugin.js";
+import fs from "fs";
+import YAML from "yaml";
+import { keyValue } from "../config/api.js";
 
 export class RecallConfigController extends plugin {
     constructor() {
         super({
-            name: 'Recall Config Controller',
-            dsc: '控制撤回功能的状态和时间',
-            event: 'message',
-            priority: '50',
+            name: "Recall Config Controller",
+            dsc: "控制撤回功能的状态和时间",
+            event: "message",
+            priority: "50",
             rule: [
                 {
-                    reg: '^#?(开启|关闭)p撤回$',
-                    fnc: 'toggleRecall'
+                    reg: "^#?(开启|关闭)p撤回$",
+                    fnc: "toggleRecall"
                 },
                 {
-                    reg: '^#?设置p撤回(\\d+)$',
-                    fnc: 'setRecallTime'
+                    reg: "^#?设置p撤回(\\d+)$",
+                    fnc: "setRecallTime"
                 },
                 {
-                    reg: '^#?设置R18模式(0|1|2)$',
-                    fnc: 'setR18Mode'
+                    reg: "^#?设置R18模式(0|1|2)$",
+                    fnc: "setR18Mode"
                 },
                 {
-                    reg: '^#?设置图片偏好(0|1|2)$',
-                    fnc: 'setImagePreference'
+                    reg: "^#?设置图片偏好(0|1|2)$",
+                    fnc: "setImagePreference"
                 }
             ]
         });
     }
 
     getConfigPath() {
-        return './plugins/kkp-plugin/config/recall.yaml';
+        return "./plugins/kkp-plugin/config/recall.yaml";
     }
 
     getRecallConfig() {
         const path = this.getConfigPath();
         if (!fs.existsSync(path)) {
-            return { recall: true, time: 40000, mode: 'all', order: 'popular_d' };
+            return { recall: true, time: 40000, mode: "all", order: "popular_d" };
         }
-        const fileContents = fs.readFileSync(path, 'utf8');
-        return YAML.parse(fileContents) || { recall: true, time: 40000, mode: 'all', order: 'popular_d' };
+        const fileContents = fs.readFileSync(path, "utf8");
+        return YAML.parse(fileContents) || { recall: true, time: 40000, mode: "all", order: "popular_d" };
     }
 
     writeRecallConfig(config) {
@@ -54,10 +54,10 @@ export class RecallConfigController extends plugin {
             return;
         }
 
-        const [, action] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
+        const [ , action ] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
         const config = this.getRecallConfig();
 
-        if (action === '开启') {
+        if (action === "开启") {
             config.recall = true;
             await e.reply("已开启撤回功能");
         } else {
@@ -73,7 +73,7 @@ export class RecallConfigController extends plugin {
             return;
         }
 
-        const [, timeStr] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
+        const [ , timeStr ] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
         const time = parseInt(timeStr) * 1000;
 
         if (time < 10000 || time > 110000) {
@@ -93,8 +93,8 @@ export class RecallConfigController extends plugin {
             return;
         }
 
-        const [, modeStr] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
-        const modeMap = { '0': 'all', '1': 'safe', '2': 'r18' };
+        const [ , modeStr ] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
+        const modeMap = { "0": "all", "1": "safe", "2": "r18" };
         const config = this.getRecallConfig();
         config.mode = modeMap[modeStr];
         this.writeRecallConfig(config);
@@ -107,8 +107,8 @@ export class RecallConfigController extends plugin {
             return;
         }
 
-        const [, preferenceStr] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
-        const orderMap = { '0': 'popular_d', '1': 'popular_male_d', '2': 'popular_female_d' };
+        const [ , preferenceStr ] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
+        const orderMap = { "0": "popular_d", "1": "popular_male_d", "2": "popular_female_d" };
         const config = this.getRecallConfig();
         config.order = orderMap[preferenceStr];
         this.writeRecallConfig(config);

@@ -1,37 +1,37 @@
-import plugin from '../../../lib/plugins/plugin.js';
-import axios from 'axios';
-import fs from 'fs';
-import YAML from 'yaml';
-import { pid, user } from '../config/api.js';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
+import plugin from "../../../lib/plugins/plugin.js";
+import axios from "axios";
+import fs from "fs";
+import YAML from "yaml";
+import { pid, user } from "../config/api.js";
+import { execFile } from "child_process";
+import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
-const pythonCommand = process.platform === 'win32' ? 'python' : 'python3';
+const pythonCommand = process.platform === "win32" ? "python" : "python3";
 
 export class PixivArtistWorksFetcher extends plugin {
     constructor() {
         super({
-            name: 'p站画师id获取图片',
-            dsc: '通过画师ID获取作品图片',
-            event: 'message',
+            name: "p站画师id获取图片",
+            dsc: "通过画师ID获取作品图片",
+            event: "message",
             priority: 50,
             rule: [
                 {
-                    reg: '^#来(\\d+)张(\\d+)作品$',
-                    fnc: 'processLatestArtistWorks'
+                    reg: "^#来(\\d+)张(\\d+)作品$",
+                    fnc: "processLatestArtistWorks"
                 },
                 {
-                    reg: '^#?随机(\\d+)张(\\d+)作品$',
-                    fnc: 'processRandomArtistWorks'
+                    reg: "^#?随机(\\d+)张(\\d+)作品$",
+                    fnc: "processRandomArtistWorks"
                 }
             ]
         });
     }
 
     getRecallConfig() {
-        const path = './plugins/kkp-plugin/config/recall.yaml';
-        const fileContents = fs.readFileSync(path, 'utf8');
+        const path = "./plugins/kkp-plugin/config/recall.yaml";
+        const fileContents = fs.readFileSync(path, "utf8");
         return YAML.parse(fileContents);
     }
 
@@ -40,7 +40,7 @@ export class PixivArtistWorksFetcher extends plugin {
             const response = await axios.get(user(artistId));
             return response.data;
         } catch (error) {
-            throw new Error(`获取画师信息失败：${error.message}`);
+            throw new Error(`获取画师信息失败：${error.message}`, { cause: error });
         }
     }
 
@@ -49,7 +49,7 @@ export class PixivArtistWorksFetcher extends plugin {
             const response = await axios.get(pid(pidValue));
             return response.data;
         } catch (error) {
-            throw new Error(`获取作品信息失败：${error.message}`);
+            throw new Error(`获取作品信息失败：${error.message}`, { cause: error });
         }
     }
 
@@ -59,7 +59,7 @@ export class PixivArtistWorksFetcher extends plugin {
         fs.writeFileSync(tempImagePath, imageBuffer);
 
         try {
-            const { stdout } = await execFileAsync(pythonCommand, ['./plugins/kkp-plugin/modify_image.py', tempImagePath]);
+            const { stdout } = await execFileAsync(pythonCommand, [ "./plugins/kkp-plugin/modify_image.py", tempImagePath ]);
             const modifiedImagePath = stdout.trim();
             const modifiedImageBuffer = fs.readFileSync(modifiedImagePath);
 
@@ -89,7 +89,7 @@ export class PixivArtistWorksFetcher extends plugin {
         const artistId = match[2];
 
         if (num > 30) {
-            await e.reply('一次最多看30张哦');
+            await e.reply("一次最多看30张哦");
             return;
         }
 
@@ -97,7 +97,7 @@ export class PixivArtistWorksFetcher extends plugin {
             const artistData = await this.fetchArtistDetails(artistId);
 
             if (!artistData || artistData.error) {
-                await e.reply('请输入正确的画师ID');
+                await e.reply("请输入正确的画师ID");
                 return;
             }
 
@@ -123,7 +123,7 @@ export class PixivArtistWorksFetcher extends plugin {
     async sendCombinedWorkDetails(e, workDetailsList) {
         const combinedMsgData = [];
 
-        const imageDataTasks = workDetailsList.map(async (details, index) => {
+        const imageDataTasks = workDetailsList.map(async(details, index) => {
             const body = details.body;
             const imageUrls = Object.values(body.urls);
 
@@ -132,18 +132,18 @@ export class PixivArtistWorksFetcher extends plugin {
             const msgData = [
                 `id：${body.illustId}\n`,
                 `画师：${body.userName}（${body.userId}）\n`,
-                `是否ai：${body.aiType === 2 ? '是' : '否'}\n`,
+                `是否ai：${body.aiType === 2 ? "是" : "否"}\n`,
                 `标题：${body.illustTitle}\n`,
                 `上传时间：${body.createDate}\n`,
                 `♥：${body.likeCount}\n`,
                 `😊：${body.bookmarkCount}\n`,
                 `👁：${body.viewCount}\n`,
                 `tag：${tagList.join(", ")}\n`
-            ].join('');
+            ].join("");
 
             const imageBuffers = await Promise.all(
-                imageUrls.map(async (imageUrl, i) => {
-                    const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+                imageUrls.map(async(imageUrl, i) => {
+                    const response = await axios.get(imageUrl, { responseType: "arraybuffer" });
                     return this.modifyImageWithPython(response.data, `image_${index}_${i}`);
                 })
             );
@@ -155,7 +155,7 @@ export class PixivArtistWorksFetcher extends plugin {
 
         for (const { msgData, imageBuffers } of resolvedTasks) {
             combinedMsgData.push({
-                message: [msgData, ...imageBuffers.map(buffer => segment.image(buffer))],
+                message: [ msgData, ...imageBuffers.map(buffer => segment.image(buffer)) ],
                 forward: true
             });
         }
@@ -179,7 +179,7 @@ export class PixivArtistWorksFetcher extends plugin {
     shuffleArray(array) {
         for (let i = array.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
-            [array[i], array[j]] = [array[j], array[i]];
+            [ array[i], array[j] ] = [ array[j], array[i] ];
         }
         return array;
     }

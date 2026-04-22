@@ -1,11 +1,11 @@
-import plugin from '../../../lib/plugins/plugin.js'
-import { createRequire } from 'module'
-import _ from 'lodash'
-import { Restart } from '../../other/restart.js'
+import plugin from "../../../lib/plugins/plugin.js"
+import { createRequire } from "module"
+import _ from "lodash"
+import { Restart } from "../../other/restart.js"
 import common from "../../../lib/common/common.js"
 
 const require = createRequire(import.meta.url)
-const { exec, execSync } = require('child_process')
+const { exec, execSync } = require("child_process")
 
 // 是否在更新中
 let uping = false
@@ -15,14 +15,14 @@ let uping = false
 export class Update extends plugin {
     constructor() {
         super({
-            name: '更新kkp插件',
-            dsc: '更新插件',
-            event: 'message',
+            name: "更新kkp插件",
+            dsc: "更新插件",
+            event: "message",
             priority: 10,
             rule: [
                 {
-                    reg: '^#*(kkp|kkp)(插件)?(强制)?更新$',
-                    fnc: 'update'
+                    reg: "^#*(kkp|kkp)(插件)?(强制)?更新$",
+                    fnc: "update"
                 }
             ]
         })
@@ -34,12 +34,12 @@ export class Update extends plugin {
     async update() {
         /** 检查是否正在更新中 */
         if (uping) {
-            await this.reply('已有命令更新中..请勿重复操作')
+            await this.reply("已有命令更新中..请勿重复操作")
             return
         }
         /** 检查git安装 */
         if (!(await this.checkGit())) return
-        const isForce = this.e.msg.includes('强制')
+        const isForce = this.e.msg.includes("强制")
         /** 执行更新 */
         await this.runUpdate(isForce)
         /** 是否需要重启 */
@@ -57,16 +57,16 @@ export class Update extends plugin {
      * @returns
      */
     async runUpdate(isForce) {
-        const _path = './plugins/kkp-plugin/'
+        const _path = "./plugins/kkp-plugin/"
         let command = `git -C ${_path} pull --no-rebase`
         if (isForce) {
             command = `git -C ${_path} reset --hard origin && ${command}`
-            this.e.reply('正在执行强制更新操作，请稍等')
+            this.e.reply("正在执行强制更新操作，请稍等")
         } else {
-            this.e.reply('正在执行更新操作，请稍等')
+            this.e.reply("正在执行更新操作，请稍等")
         }
         /** 获取上次提交的commitId，用于获取日志时判断新增的更新日志 */
-        this.oldCommitId = await this.getcommitId('kkp-plugin')
+        this.oldCommitId = await this.getcommitId("kkp-plugin")
         uping = true
         let ret = await this.execSync(command)
         uping = false
@@ -77,7 +77,7 @@ export class Update extends plugin {
             return false
         }
         /** 获取插件提交的最新时间 */
-        let time = await this.getTime('kkp-plugin')
+        let time = await this.getTime("kkp-plugin")
 
         if (/(Already up[ -]to[ -]date|已经是最新的)/.test(ret.stdout)) {
             await this.reply(`kkp插件已经是最新版本\n最后更新时间：${time}`)
@@ -85,7 +85,7 @@ export class Update extends plugin {
             await this.reply(`kkp插件\n最后更新时间：${time}`)
             this.isUp = true
             /** 获取kkp组件的更新日志 */
-            let log = await this.getLog('kkp-plugin')
+            let log = await this.getLog("kkp-plugin")
             await this.reply(log)
         }
         logger.mark(`${this.e.logFnc} 最后更新时间：${time}`)
@@ -96,29 +96,29 @@ export class Update extends plugin {
      * @param {string} plugin 插件名称
      * @returns
      */
-    async getLog(plugin = '') {
+    async getLog(plugin = "") {
         let cm = `cd ./plugins/${plugin}/ && git log  -20 --oneline --pretty=format:"%h||[%cd]  %s" --date=format:"%F %T"`
         let logAll
         try {
-            logAll = await execSync(cm, { encoding: 'utf-8' })
+            logAll = await execSync(cm, { encoding: "utf-8" })
         } catch (error) {
             logger.error(error.toString())
             this.reply(error.toString())
         }
         if (!logAll) return false
-        logAll = logAll.split('\n')
+        logAll = logAll.split("\n")
         let log = []
         for (let str of logAll) {
-            str = str.split('||')
+            str = str.split("||")
             if (str[0] == this.oldCommitId) break
-            if (str[1].includes('Merge branch')) continue
+            if (str[1].includes("Merge branch")) continue
             log.push(str[1])
         }
         let line = log.length
-        log = log.join('\n\n')
-        if (log.length <= 0) return ''
-        let end = '更多详细信息，请前往gitee查看\nhttps://gitee.com/dungeonmaster/kkp-plugin'
-        log = await common.makeForwardMsg(this.e, [log, end], `${plugin}更新日志，共${line}条`)
+        log = log.join("\n\n")
+        if (log.length <= 0) return ""
+        let end = "更多详细信息，请前往gitee查看\nhttps://gitee.com/dungeonmaster/kkp-plugin"
+        log = await common.makeForwardMsg(this.e, [ log, end ], `${plugin}更新日志，共${line}条`)
         return log
     }
     /**
@@ -126,9 +126,9 @@ export class Update extends plugin {
      * @param {string} plugin 插件名称
      * @returns
      */
-    async getcommitId(plugin = '') {
+    async getcommitId(plugin = "") {
         let cm = `git -C ./plugins/${plugin}/ rev-parse --short HEAD`
-        let commitId = await execSync(cm, { encoding: 'utf-8' })
+        let commitId = await execSync(cm, { encoding: "utf-8" })
         commitId = _.trim(commitId)
         return commitId
     }
@@ -137,15 +137,15 @@ export class Update extends plugin {
      * @param {string} plugin 插件名称
      * @returns
      */
-    async getTime(plugin = '') {
+    async getTime(plugin = "") {
         let cm = `cd ./plugins/${plugin}/ && git log -1 --oneline --pretty=format:"%cd" --date=format:"%m-%d %H:%M"`
-        let time = ''
+        let time = ""
         try {
-            time = await execSync(cm, { encoding: 'utf-8' })
+            time = await execSync(cm, { encoding: "utf-8" })
             time = _.trim(time)
         } catch (error) {
             logger.error(error.toString())
-            time = '获取时间失败'
+            time = "获取时间失败"
         }
         return time
     }
@@ -156,37 +156,37 @@ export class Update extends plugin {
      * @returns
      */
     async gitErr(err, stdout) {
-        let msg = '更新失败！'
+        let msg = "更新失败！"
         let errMsg = err.toString()
         stdout = stdout.toString()
-        if (errMsg.includes('Timed out')) {
-            let remote = errMsg.match(/'(.+?)'/g)[0].replace(/'/g, '')
+        if (errMsg.includes("Timed out")) {
+            let remote = errMsg.match(/'(.+?)'/g)[0].replace(/'/g, "")
             await this.reply(msg + `\n连接超时：${remote}`)
             return
         }
         if (/Failed to connect|unable to access/g.test(errMsg)) {
-            let remote = errMsg.match(/'(.+?)'/g)[0].replace(/'/g, '')
+            let remote = errMsg.match(/'(.+?)'/g)[0].replace(/'/g, "")
             await this.reply(msg + `\n连接失败：${remote}`)
             return
         }
-        if (errMsg.includes('be overwritten by merge')) {
+        if (errMsg.includes("be overwritten by merge")) {
             await this.reply(
                 msg +
                 `存在冲突：\n${errMsg}\n` +
-                '请解决冲突后再更新，或者执行#强制更新，放弃本地修改'
+                "请解决冲突后再更新，或者执行#强制更新，放弃本地修改"
             )
             return
         }
-        if (stdout.includes('CONFLICT')) {
+        if (stdout.includes("CONFLICT")) {
             await this.reply([
-                msg + '存在冲突\n',
+                msg + "存在冲突\n",
                 errMsg,
                 stdout,
-                '\n请解决冲突后再更新，或者执行#强制更新，放弃本地修改'
+                "\n请解决冲突后再更新，或者执行#强制更新，放弃本地修改"
             ])
             return
         }
-        await this.reply([errMsg, stdout])
+        await this.reply([ errMsg, stdout ])
     }
     /**
      * 异步执行git相关命令
@@ -205,9 +205,9 @@ export class Update extends plugin {
      * @returns
      */
     async checkGit() {
-        let ret = await execSync('git --version', { encoding: 'utf-8' })
-        if (!ret || !ret.includes('git version')) {
-            await this.reply('请先安装git')
+        let ret = await execSync("git --version", { encoding: "utf-8" })
+        if (!ret || !ret.includes("git version")) {
+            await this.reply("请先安装git")
             return false
         }
         return true

@@ -1,18 +1,18 @@
-import plugin from '../../../lib/plugins/plugin.js';
-import axios from 'axios';
-import { user } from '../config/api.js';
+import plugin from "../../../lib/plugins/plugin.js";
+import axios from "axios";
+import { user } from "../config/api.js";
 
 export class ArtistDetails extends plugin {
     constructor() {
         super({
-            name: '获取画师作品id',
-            dsc: '获取画师作品id',
-            event: 'message',
-            priority: '500',
+            name: "获取画师作品id",
+            dsc: "获取画师作品id",
+            event: "message",
+            priority: "500",
             rule: [
                 {
-                    reg: '^#画师(\\d+)$', 
-                    fnc: 'processArtist'
+                    reg: "^#画师(\\d+)$", 
+                    fnc: "processArtist"
                 }
             ]
         });
@@ -24,7 +24,7 @@ export class ArtistDetails extends plugin {
             return response.data;
         } catch (error) {
             if (error.response && error.response.status === 403) {
-                throw new Error("暂无权使用");
+                throw new Error("暂无权使用", { cause: error });
             }
             console.error(`Error fetching artist details: ${error.message}`);
             return null;
@@ -42,7 +42,7 @@ export class ArtistDetails extends plugin {
             const artistData = await this.fetchArtistDetails(artistId);
 
             if (!artistData || artistData.error) {
-                await e.reply('请输入正确的画师id');
+                await e.reply("请输入正确的画师id");
                 return;
             }
 

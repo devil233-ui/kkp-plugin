@@ -1,18 +1,18 @@
-import plugin from '../../../lib/plugins/plugin.js'
-import axios from 'axios';
+import plugin from "../../../lib/plugins/plugin.js"
+import axios from "axios";
 
 export class BingWallpaper extends plugin {
     constructor() {
         super(
             {
-                name: '必应壁纸',
-                dsc: '获取必应壁纸并制作成合并转发消息',
-                event: 'message',
-                priority: '50',
+                name: "必应壁纸",
+                dsc: "获取必应壁纸并制作成合并转发消息",
+                event: "message",
+                priority: "50",
                 rule: [
                     {
-                        reg: '^#?必应壁纸$',
-                        fnc: 'processBingWallpaper'
+                        reg: "^#?必应壁纸$",
+                        fnc: "processBingWallpaper"
                     }
                 ]
             }
@@ -21,7 +21,7 @@ export class BingWallpaper extends plugin {
 
     async processBingWallpaper(e) {
         try {
-            const url = `https://api.oioweb.cn/api/bing`;
+            const url = "https://api.oioweb.cn/api/bing";
             const response = await axios.get(url);
             const data = response.data;
 
@@ -35,7 +35,7 @@ export class BingWallpaper extends plugin {
                     const title = wallpaper.copyright;
 
                     msgList.push({
-                        message: [title, "\n", segment.image(imageUrl)],
+                        message: [ title, "\n", segment.image(imageUrl) ],
                         nickname: e.user_id.toString(),
                         user_id: e.user_id
                     });
@@ -44,7 +44,7 @@ export class BingWallpaper extends plugin {
                 const ForwardMsg = await e.group.makeForwardMsg(msgList);
                 await e.reply(ForwardMsg);
             } else {
-                await this.reply('获取必应壁纸失败');
+                await this.reply("获取必应壁纸失败");
             }
 
         } catch (error) {

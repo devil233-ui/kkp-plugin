@@ -1,34 +1,34 @@
-import plugin from '../../../lib/plugins/plugin.js';
-import axios from 'axios';
-import fs from 'fs';
-import YAML from 'yaml';
-import { pid, tag as fetchTag } from '../config/api.js';
-import { execFile } from 'child_process';
-import path from 'path';
-import { promisify } from 'util';
+import plugin from "../../../lib/plugins/plugin.js";
+import axios from "axios";
+import fs from "fs";
+import YAML from "yaml";
+import { pid, tag as fetchTag } from "../config/api.js";
+import { execFile } from "child_process";
+import path from "path";
+import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
-const pythonCommand = process.platform === 'win32' ? 'python' : 'python3';
+const pythonCommand = process.platform === "win32" ? "python" : "python3";
 
 export class SetuImageFetcher extends plugin {
     constructor() {
         super({
-            name: 'Setu Image Fetch',
-            dsc: '通过tag搜索图',
-            event: 'message',
+            name: "Setu Image Fetch",
+            dsc: "通过tag搜索图",
+            event: "message",
             priority: 500,
             rule: [
                 {
-                    reg: '^#?来(\\d+)张(.*?)图$',
-                    fnc: '_processSetuImages'
+                    reg: "^#?来(\\d+)张(.*?)图$",
+                    fnc: "_processSetuImages"
                 }
             ]
         });
     }
 
     getRecallConfig() {
-        const path = './plugins/kkp-plugin/config/recall.yaml';
-        const fileContents = fs.readFileSync(path, 'utf8');
+        const path = "./plugins/kkp-plugin/config/recall.yaml";
+        const fileContents = fs.readFileSync(path, "utf8");
         return YAML.parse(fileContents);
     }
 
@@ -44,8 +44,8 @@ export class SetuImageFetcher extends plugin {
 
     async fetchTagSearchResults(tagValue) {
         const config = this.getRecallConfig();
-        const mode = config.mode || 'all';
-        const order = config.order || 'popular_d';
+        const mode = config.mode || "all";
+        const order = config.order || "popular_d";
         const apiUrl = `${fetchTag(tagValue)}&mode=${mode}&order=${order}`;
         
         const response = await axios.get(apiUrl);
@@ -69,13 +69,13 @@ export class SetuImageFetcher extends plugin {
         try {
             fs.writeFileSync(tempImagePath, imageBuffer);
             const { stdout } = await execFileAsync(pythonCommand, [
-                './plugins/kkp-plugin/modify_image.py',
+                "./plugins/kkp-plugin/modify_image.py",
                 tempImagePath
             ]);
 
             const modifiedImagePath = stdout.trim();
             if (!fs.existsSync(modifiedImagePath)) {
-                throw new Error('Python处理图片失败');
+                throw new Error("Python处理图片失败");
             }
 
             const modifiedImageBuffer = fs.readFileSync(modifiedImagePath);
@@ -90,10 +90,10 @@ export class SetuImageFetcher extends plugin {
     }
 
     deleteTempFiles() {
-        const tempDir = path.resolve('./plugins/kkp-plugin/temp');
+        const tempDir = path.resolve("./plugins/kkp-plugin/temp");
         fs.readdir(tempDir, (err, files) => {
             if (err) {
-                console.error('读取temp目录失败：', err);
+                console.error("读取temp目录失败：", err);
                 return;
             }
 
@@ -109,7 +109,7 @@ export class SetuImageFetcher extends plugin {
     }
 
     async _processSetuImages(e) {
-        const [, numStr, tag] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
+        const [ , numStr, tag ] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
         const num = parseInt(numStr);
 
         if (num > 30) {
@@ -127,17 +127,17 @@ export class SetuImageFetcher extends plugin {
         const detailsPromises = selectedPids.map(pid => this.fetchPixivImageDetails(pid));
         const detailsList = await Promise.all(detailsPromises);
 
-        await e.reply(`图片获取完毕，正在发送中...`);
+        await e.reply("图片获取完毕，正在发送中...");
 
-        const imageMessages = await Promise.all(detailsList.map(async (details, index) => {
+        const imageMessages = await Promise.all(detailsList.map(async(details, index) => {
             if (details && details.body) {
                 const imageUrls = Object.values(details.body.urls).map(url => `${url}`);
                 const tagList = details.body.tags.tags.map(tagObj => tagObj.tag);
                 
-                const imageBuffers = await Promise.all(imageUrls.map(async (imageUrl) => {
+                const imageBuffers = await Promise.all(imageUrls.map(async(imageUrl) => {
                     try {
                         const imageDataResponse = await axios.get(imageUrl, { 
-                            responseType: 'arraybuffer',
+                            responseType: "arraybuffer",
                             maxContentLength: Infinity,
                             maxBodyLength: Infinity
                         });
@@ -150,12 +150,12 @@ export class SetuImageFetcher extends plugin {
 
                 const validImageBuffers = imageBuffers.filter(buffer => buffer !== null);
                 
-                const modifiedImageSegments = await Promise.all(validImageBuffers.map(async (buffer, i) => {
+                const modifiedImageSegments = await Promise.all(validImageBuffers.map(async(buffer, i) => {
                     try {
                         const modifiedBuffer = await this.modifyImageWithPython(buffer, `image_${index}_${i}`);
                         return segment.image(modifiedBuffer);
                     } catch (error) {
-                        console.error(`图片处理失败:`, error);
+                        console.error("图片处理失败:", error);
                         return null;
                     }
                 }));
@@ -165,7 +165,7 @@ export class SetuImageFetcher extends plugin {
                 const msgData = [
                     `id：${details.body.illustId}\n`,
                     `画师：${details.body.userName}（${details.body.userId}）\n`,
-                    `是否ai：${details.body.aiType === 2? '是' : '否'}\n`,
+                    `是否ai：${details.body.aiType === 2? "是" : "否"}\n`,
                     `标题：${details.body.illustTitle}\n`,
                     `上传时间：${details.body.createDate}\n`,
                     `♥：${details.body.likeCount}\n`,
@@ -208,8 +208,8 @@ export class SetuImageFetcher extends plugin {
 
                 this.deleteTempFiles();
             } catch (error) {
-                console.error('发送消息失败:', error);
-                await e.reply('消息发送失败');
+                console.error("发送消息失败:", error);
+                await e.reply("消息发送失败");
             }
         }
     }

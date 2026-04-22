@@ -1,38 +1,38 @@
-import plugin from '../../../lib/plugins/plugin.js';
-import axios from 'axios';
-import fs from 'fs';
-import YAML from 'yaml';
-import { pid, dailyRanking } from '../config/api.js';
-import { execFile } from 'child_process';
-import path from 'path';
+import plugin from "../../../lib/plugins/plugin.js";
+import axios from "axios";
+import fs from "fs";
+import YAML from "yaml";
+import { pid, dailyRanking } from "../config/api.js";
+import { execFile } from "child_process";
+import path from "path";
 
-const pythonCommand = process.platform === 'win32' ? 'python' : 'python3';
+const pythonCommand = process.platform === "win32" ? "python" : "python3";
 
 export class DailyRankImageFetcher extends plugin {
     constructor() {
         super({
-            name: 'Daily Rank Image Fetch',
-            dsc: '获取每日排行图片',
-            event: 'message',
+            name: "Daily Rank Image Fetch",
+            dsc: "获取每日排行图片",
+            event: "message",
             priority: 500,
             rule: [
                 {
-                    reg: '^#?每日排行(\\d+)?$',
-                    fnc: '_processDailyRank'
+                    reg: "^#?每日排行(\\d+)?$",
+                    fnc: "_processDailyRank"
                 }
             ]
         });
     }
 
     getRecallConfig() {
-        const path = './plugins/kkp-plugin/config/recall.yaml';
+        const path = "./plugins/kkp-plugin/config/recall.yaml";
         try {
             if (fs.existsSync(path)) {
-                const fileContents = fs.readFileSync(path, 'utf8');
+                const fileContents = fs.readFileSync(path, "utf8");
                 return YAML.parse(fileContents);
             }
         } catch (e) {
-            console.error('读取recall配置失败：', e);
+            console.error("读取recall配置失败：", e);
         }
         return { recall: false, time: 0 }; // 返回默认配置
     }
@@ -43,7 +43,7 @@ export class DailyRankImageFetcher extends plugin {
         const apiUrl = dailyRanking();
         try {
             const response = await axios.get(apiUrl, {
-                headers: { 'User-Agent': 'Yunzai-Bot' },
+                headers: { "User-Agent": "Yunzai-Bot" },
                 timeout: 5000
             });
 
@@ -77,7 +77,7 @@ export class DailyRankImageFetcher extends plugin {
 
     async modifyImageWithPython(imagePath) {
         return new Promise((resolve, reject) => {
-            execFile(pythonCommand, ['./plugins/kkp-plugin/modify_image.py', imagePath], (error, stdout, stderr) => {
+            execFile(pythonCommand, [ "./plugins/kkp-plugin/modify_image.py", imagePath ], (error, stdout, stderr) => {
                 if (error) {
                     reject(error);
                 } else {
@@ -88,10 +88,10 @@ export class DailyRankImageFetcher extends plugin {
     }
 
     deleteTempFiles() {
-        const tempDir = path.resolve('./plugins/kkp-plugin/temp');
+        const tempDir = path.resolve("./plugins/kkp-plugin/temp");
         fs.readdir(tempDir, (err, files) => {
             if (err) {
-                console.error('读取temp目录失败：', err);
+                console.error("读取temp目录失败：", err);
                 return;
             }
 
@@ -107,7 +107,7 @@ export class DailyRankImageFetcher extends plugin {
     }
 
     async _processDailyRank(e) {
-        const tempDir = './plugins/kkp-plugin/temp';
+        const tempDir = "./plugins/kkp-plugin/temp";
         if (!fs.existsSync(tempDir)) {
             fs.mkdirSync(tempDir, { recursive: true });
         }
@@ -126,21 +126,21 @@ export class DailyRankImageFetcher extends plugin {
         const detailsPromises = selectedPids.map(pid => this.fetchPixivImageDetails(pid));
         const detailsList = await Promise.all(detailsPromises);
 
-        await e.reply(`图片获取完毕，正在发送中...`);
+        await e.reply("图片获取完毕，正在发送中...");
 
-        const imageMessages = await Promise.all(detailsList.map(async (details, index) => {
+        const imageMessages = await Promise.all(detailsList.map(async(details, index) => {
             if (details && details.body) {
-                const imageUrls = [details.body.urls.regular || Object.values(details.body.urls)[0]];
+                const imageUrls = [ details.body.urls.regular || Object.values(details.body.urls)[0] ];
                 const tagList = details.body.tags.tags.map(tagObj => tagObj.tag);
 
-                const imageDatas = await Promise.all(imageUrls.map(async (imageUrl) => {
-                    const imageDataResponse = await axios.get(imageUrl, { responseType: 'arraybuffer', maxContentLength: Infinity, maxBodyLength: Infinity });
+                const imageDatas = await Promise.all(imageUrls.map(async(imageUrl) => {
+                    const imageDataResponse = await axios.get(imageUrl, { responseType: "arraybuffer", maxContentLength: Infinity, maxBodyLength: Infinity });
                     return imageDataResponse.data;
                 }));
 
                 const validImageDatas = imageDatas.filter(data => data !== null);
 
-                const modifiedImagePaths = await Promise.all(validImageDatas.map(async (imageData, i) => {
+                const modifiedImagePaths = await Promise.all(validImageDatas.map(async(imageData, i) => {
                     const imagePath = `./plugins/kkp-plugin/temp/temp_image_${index}_${i}.jpg`;
                     fs.writeFileSync(imagePath, imageData);
                     const modifiedImagePath = await this.modifyImageWithPython(imagePath);
@@ -150,7 +150,7 @@ export class DailyRankImageFetcher extends plugin {
                 const msgData = [
                     `id：${details.body.illustId}\n`,
                     `画师：${details.body.userName}（${details.body.userId}）\n`,
-                    `是否ai：${details.body.aiType === 2 ? '是' : '否'}\n`,
+                    `是否ai：${details.body.aiType === 2 ? "是" : "否"}\n`,
                     `标题：${details.body.illustTitle}\n`,
                     `上传时间：${details.body.createDate}\n`,
                     `♥：${details.body.likeCount}\n`,

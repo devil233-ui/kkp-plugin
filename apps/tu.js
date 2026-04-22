@@ -1,47 +1,47 @@
-import plugin from '../../../lib/plugins/plugin.js';
-import axios from 'axios';
-import fs from 'fs';
-import YAML from 'yaml';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
+import plugin from "../../../lib/plugins/plugin.js";
+import axios from "axios";
+import fs from "fs";
+import YAML from "yaml";
+import { execFile } from "child_process";
+import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
-const pythonCommand = process.platform === 'win32' ? 'python' : 'python3';
+const pythonCommand = process.platform === "win32" ? "python" : "python3";
 
 export class CosImageFetcher extends plugin {
     constructor() {
         super({
-            name: '23图',
-            dsc: '23图',
-            event: 'message',
+            name: "23图",
+            dsc: "23图",
+            event: "message",
             priority: 60,
             rule: [
                 {
-                    reg: '^#?2图$',
-                    fnc: 'process2Images'
+                    reg: "^#?2图$",
+                    fnc: "process2Images"
                 },
                 {
-                    reg: '^#?3图$',
-                    fnc: 'process3Images'
+                    reg: "^#?3图$",
+                    fnc: "process3Images"
                 }
             ]
         });
     }
 
     getRecallConfig() {
-        const path = './plugins/kkp-plugin/config/recall.yaml';
-        const fileContents = fs.readFileSync(path, 'utf8');
+        const path = "./plugins/kkp-plugin/config/recall.yaml";
+        const fileContents = fs.readFileSync(path, "utf8");
         return YAML.parse(fileContents);
     }
 
     async fetchImage(url) {
         try {
             const response = await axios.get(url, {
-                responseType: 'arraybuffer',
+                responseType: "arraybuffer",
                 maxContentLength: Infinity,
                 maxBodyLength: Infinity
             });
-            return Buffer.from(response.data, 'binary');
+            return Buffer.from(response.data, "binary");
         } catch (error) {
             console.error(`Error fetching image: ${error}`);
             return null;
@@ -54,7 +54,7 @@ export class CosImageFetcher extends plugin {
         fs.writeFileSync(tempImagePath, imageBuffer);
 
         try {
-            const { stdout } = await execFileAsync(pythonCommand, ['./plugins/kkp-plugin/modify_image.py', tempImagePath]);
+            const { stdout } = await execFileAsync(pythonCommand, [ "./plugins/kkp-plugin/modify_image.py", tempImagePath ]);
             const modifiedImagePath = stdout.trim();
             const modifiedImageBuffer = fs.readFileSync(modifiedImagePath);
 
@@ -69,12 +69,12 @@ export class CosImageFetcher extends plugin {
     }
 
     async process2Images(e) {
-        const url = `http://i7.aqinco.com:50022/`;
+        const url = "http://i7.aqinco.com:50022/";
         await this.sendImages(e, url);
     }
 
     async process3Images(e) {
-        const url = `http://i7.aqinco.com:50033/`;
+        const url = "http://i7.aqinco.com:50033/";
         await this.sendImages(e, url);
     }
 
@@ -94,7 +94,7 @@ export class CosImageFetcher extends plugin {
             let modifiedImages = await Promise.all(modifiedImagesPromises);
 
             let msgList = modifiedImages.map((modifiedImage, index) => ({
-                message: [`涩批还看 ${index + 1}`, "\n", segment.image(`base64://${modifiedImage.toString('base64')}`)],
+                message: [ `涩批还看 ${index + 1}`, "\n", segment.image(`base64://${modifiedImage.toString("base64")}`) ],
                 nickname: e.user_id.toString(),
                 user_id: e.user_id
             }));
@@ -116,7 +116,7 @@ export class CosImageFetcher extends plugin {
                     }, recallConfig.time);
                 }
             } else {
-                await e.reply('未能获取到图片，请稍后再试。');
+                await e.reply("未能获取到图片，请稍后再试。");
             }
         } catch (error) {
             console.error(`Error processing images: ${error}`);
