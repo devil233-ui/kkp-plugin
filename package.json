@@ -11,6 +11,7 @@
   "author": "kkp",
   "license": "ISC",
   "dependencies": {
-    "axios": "^1.13.6"
+    "axios": "^1.13.6",
+    "sharp": "*"
   }
 }

@@ -5,6 +5,7 @@ import crypto from "crypto";
 import YAML from "yaml";
 import fs from "fs";
 import path from "path";
+import { FlipImage } from "./flip.js";
 
 function getRefreshToken() {
     const configPath = "./plugins/kkp-plugin/config/token.yaml";
@@ -148,7 +149,7 @@ export class PixivPushPlugin extends plugin {
 
         if (!data[groupId]) data[groupId] = { "pushEnabled": false, "artists": {} };
         if (Object.keys(data).length > 5) return e.reply("已达到群订阅上限！");
-        if (Object.keys(data[groupId].artists).length >= 20) return e.reply("该群已达到画师订阅上限！");
+        if (Object.keys(data[groupId].artists).length >= 500) return e.reply("该群已达到画师订阅上限！");
 
         const matches = e.msg.trim().match(/^#?订阅画师(\d+)$/);
         const artistId = matches ? matches[1] : null;
@@ -222,7 +223,7 @@ export class PixivPushPlugin extends plugin {
         const groupId = e.group_id.toString();
         const matches = e.msg.trim().match(/^#?导入关注(列表)?(\d+)$/);
         const targetUid = matches[2];
-        
+
         let data = this.loadData();
         if (!data[groupId]) data[groupId] = { "pushEnabled": true, "artists": {}, "tags": { "whitelist": [], "blacklist": [] } };
 
@@ -248,7 +249,7 @@ export class PixivPushPlugin extends plugin {
                 for (let preview of resData.user_previews) {
                     const artistId = preview.user.id.toString();
                     const artistName = preview.user.name;
-                    
+
                     // 剔除已经订阅过的画师
                     if (!data[groupId].artists[artistId]) {
                         newArtists.push({ id: artistId, name: artistName });
@@ -272,9 +273,9 @@ export class PixivPushPlugin extends plugin {
                     const illustUrl = `https://app-api.pixiv.net/v1/user/illusts?user_id=${artist.id}&type=illust`;
                     const illustRes = await fetch(illustUrl, { headers: this.getAppHeaders(tokenResult.token) });
                     const illustData = await illustRes.json();
-                    
+
                     data[groupId].artists[artist.id] = artist.name;
-                    
+
                     if (illustData.illusts && illustData.illusts.length > 0) {
                         const maxId = illustData.illusts[0].id;
                         await redis.hSet(`kkp:pixiv:progress:${groupId}`, artist.id, maxId);
@@ -383,8 +384,8 @@ export class PixivPushPlugin extends plugin {
 
     // ================= 自动推送核心 =================
     async forcePush(e) {
-        await e.reply("正在通过 App API 检查订阅更新...");
-        const result = await this.executePushLogic(true);
+        await e.reply("正在检查订阅更新...");
+        const result = await this.executePushLogic(true, e.group_id.toString());
 
         if (result.state === "empty") {
             await e.reply("检查完毕：订阅的画师暂无更新。");
@@ -396,13 +397,16 @@ export class PixivPushPlugin extends plugin {
         return true;
     }
 
-    async executePushLogic(isManual = false) {
+    async executePushLogic(isManual = false, targetGroupId = null) {
         try {
             const data = this.loadData();
             if (Object.keys(data).length === 0) return { state: "empty" };
 
             const artistToGroups = {};
             for (let groupId in data) {
+                // 如果传了目标群号，则跳过其他群，解决串群问题
+                if (targetGroupId && groupId !== targetGroupId) continue;
+
                 if (data[groupId].pushEnabled) {
                     for (let artistId in data[groupId].artists) {
                         if (!artistToGroups[artistId]) artistToGroups[artistId] = [];
@@ -520,14 +524,13 @@ export class PixivPushPlugin extends plugin {
                             validGroups.push(gid);
                         }
 
-                        // 【核心改动 1】支持多P推送，并依然使用 large 压缩图
                         let targetImgUrls = [];
                         if (illust.meta_pages && illust.meta_pages.length > 0) {
-                            // Pixiv 多图作品，为防止一次发太多卡死，最多截取前 10 张
-                            targetImgUrls = illust.meta_pages.slice(0, 10).map(p => p.image_urls.large);
-                        } else if (illust.image_urls && illust.image_urls.large) {
-                            // 单图作品
-                            targetImgUrls = [illust.image_urls.large];
+                            // 提取多图的原图 (original)
+                            targetImgUrls = illust.meta_pages.slice(0, 5).map(p => p.image_urls.original);
+                        } else if (illust.meta_single_page && illust.meta_single_page.original_image_url) {
+                            // 提取单图的原图 (original)
+                            targetImgUrls = [illust.meta_single_page.original_image_url];
                         }
 
                         let imgBuffers = [];
@@ -542,7 +545,7 @@ export class PixivPushPlugin extends plugin {
                                 }
                             }
                         }
-                        
+
                         const date = new Date(illust.create_date);
                         const utc8Date = new Date(date.getTime() + 8 * 60 * 60 * 1000);
                         const formattedTime = `${utc8Date.getUTCFullYear()}-${String(utc8Date.getUTCMonth() + 1).padStart(2, "0")}-${String(utc8Date.getUTCDate()).padStart(2, "0")} ${String(utc8Date.getUTCHours()).padStart(2, "0")}:${String(utc8Date.getUTCMinutes()).padStart(2, "0")}:${String(utc8Date.getUTCSeconds()).padStart(2, "0")}`;
@@ -551,66 +554,126 @@ export class PixivPushPlugin extends plugin {
                         const pageCountInfo = illust.page_count > 1 ? ` (共${illust.page_count}P)` : "";
                         const infoMsg = [
                             `爷爷，您关注的画师：${illust.user.name}（${illust.user.id}）更新了`,
-                            `pid：${illust.id}${pageCountInfo}`,
+                            `https://www.pixiv.net/artworks/${illust.id}${pageCountInfo}`,
                             `是否ai：${illust.illust_ai_type === 2 ? "是" : "否"}`,
                             `标题：${illust.title}`,
                             `上传时间：${formattedTime}`,
-                            `😊：${illust.total_bookmarks}，👁：${illust.total_view}`,
-                            `tag：${tagsStr}`
+                            `tag：${tagsStr}`,
+                            // `【获取原图可使用pidxxx】`
                         ].join("\n");
 
                         let sendSuccessGroups = [];
 
+                        // 【新增辅助工具】自定义 Promise 超时熔断器
+                        const sendWithTimeout = (promise, timeoutMs = 10000) => {
+                            return Promise.race([
+                                promise,
+                                new Promise((_, reject) => setTimeout(() => reject(new Error("自定义发送超时")), timeoutMs))
+                            ]);
+                        };
+
+                        // 【新增辅助工具】构造合并转发节点
+                        const makeNode = (content) => ({ message: content, nickname: Bot.nickname, user_id: Bot.uin });
+
                         for (let gid of validGroups) {
+                            // 【核心修复】强制将 gid 转为 Number，确保拿到完整的群对象和 makeForwardMsg 方法！
+                            const group = Bot.pickGroup(Number(gid));
+                            if (!group) continue;
+
                             let msg = [infoMsg];
-                            
                             if (imgBuffers.length > 0) {
-                                // 把下载好的多张图统统塞进一条消息里
-                                for (let buf of imgBuffers) {
-                                    msg.push(segment.image(buf));
-                                }
-                                // 如果真实图数超过了我们的限制，给个提示
+                                for (let buf of imgBuffers) msg.push(segment.image(buf));
                                 if (illust.page_count > targetImgUrls.length) {
-                                    msg.push(`\n[本作多达 ${illust.page_count} 张图，此处仅展示前 ${targetImgUrls.length} 张]，获取原图使用pidxxx`);
+                                    msg.push(`\n[本作多达 ${illust.page_count} 张图，此处仅展示前 ${targetImgUrls.length} 张`);
                                 }
                             } else {
-                                msg.push("\n[图片下载失败，请输入pidxxx重试]");
+                                msg.push("\n[图片获取失败，请点击链接前往查看：\n" + targetImgUrls.join);
                             }
 
                             try {
-                                await Bot.pickGroup(gid).sendMsg(msg);
-                                // 记录成功发送的群
+                                // 【第一重：常规原图直发】给 15 秒试探
+                                const res = await sendWithTimeout(group.sendMsg(msg), 15000);
+                                if (!res || res.message_id === undefined) throw new Error("无返回ID，疑似被风控吞图");
                                 sendSuccessGroups.push(gid);
                             } catch (err) {
-                                logger.error(`[kkp-plugin] 群 ${gid} 发送失败：${err.message}`);
+                                logger.warn(`[kkp-plugin] 群 ${gid} 常规推送超时或失败(${err.message})，尝试合并转发降级...`);
+
+                                let fallbackSuccess = false;
+                                if (imgBuffers.length > 0) {
+                                    try {
+                                        // 【第二重：原图合并转发】抄 RSS 插件的作业
+                                        const forwardNode = [makeNode(msg)];
+                                        const forwardMsg = await group.makeForwardMsg(forwardNode);
+                                        const res2 = await sendWithTimeout(group.sendMsg(forwardMsg), 30000);
+                                        if (res2 && res2.message_id !== undefined) fallbackSuccess = true;
+                                    } catch (err2) {
+                                        logger.warn(`[kkp-plugin] 原图合并转发失败 (${err2.message})，尝试终极翻转...`);
+                                    }
+
+                                    if (!fallbackSuccess) {
+                                        try {
+                                            // 【第三重：翻转洗 MD5 后合并转发】防风控的终极杀器
+                                            let retryMsg = [infoMsg];
+                                            let flipSuccess = false;
+                                            for (let buf of imgBuffers) {
+                                                const flippedBuffer = await FlipImage(buf);
+                                                if (flippedBuffer) {
+                                                    retryMsg.push(segment.image(flippedBuffer));
+                                                    flipSuccess = true;
+                                                }
+                                            }
+
+                                            if (flipSuccess) {
+                                                const retryForwardNode = [makeNode(retryMsg)];
+                                                const flipForwardMsg = await group.makeForwardMsg(retryForwardNode);
+                                                const res3 = await sendWithTimeout(group.sendMsg(flipForwardMsg), 30000);
+                                                if (res3 && res3.message_id !== undefined) fallbackSuccess = true;
+                                            }
+                                        } catch (err3) {
+                                            logger.error(`[kkp-plugin] 翻转后发送失败: ${err3.message}`);
+                                        }
+                                    }
+                                }
+
+                                if (fallbackSuccess) {
+                                    sendSuccessGroups.push(gid);
+                                    continue;
+                                }
+
+                                // 【第四重：纯文本链接兜底】如果上面三套全折了，直接丢纯文本
+                                const linkMsg = [
+                                    infoMsg,
+                                    "\n图片经过多次尝试均被吞图，请点击链接前往查看：\n" + targetImgUrls.join("\n")
+                                ].join("\n");
+                                await sendWithTimeout(group.sendMsg(linkMsg), 10000).then(() => {
+                                    sendSuccessGroups.push(gid);
+                                }).catch(e => logger.error("发送兜底链接失败", e));
                             }
-                            // 加入延时，防止高频发送被风控
+
+                            // 延时防风控
                             await new Promise(r => setTimeout(r, 2000));
-                        }
+                        } // 闭合 validGroups 循环
 
                         hasUpdates = true;
 
-                        // 【核心改动 2】完美的防丢图 Redis 更新逻辑
+                        // 【被不小心删掉的：防丢图 Redis 更新逻辑】
                         for (let gid of [...needsUpdateGroups, ...initGroups]) {
-                            // 如果该群在发送名单里，但是“没在”成功名单里，说明发送抛错了
+                            // 如果该群在发送名单里，但是“没在”成功名单里，说明四重尝试全失败了，跳过更新进度
                             if (validGroups.includes(gid) && !sendSuccessGroups.includes(gid)) {
-                                continue; // 跳过更新，保持 Redis 为旧进度，等待下次轮询重试！
+                                continue;
                             }
-                            // 如果发送成功了，或者压根就是因为命中黑白名单被过滤跳过的，正常把进度推到当前图 ID
                             await redis.hSet(`kkp:pixiv:progress:${gid}`, artistId, illust.id);
                         }
-                    }
-                    
-                    // 【非常重要】确保下面紧接着的就是 } catch (err) {，
-                    // 原版代码最底部的那个统一下发 redis.hSet 的循环已经被我们彻底删除了！
+                    } // 闭合 targetIllusts 循环
 
                 } catch (err) {
+                    // 【被不小心删掉的：画师层级的异常捕获】
                     logger.error(`[kkp-plugin] 检查画师 ${artistId} 异常：${err.message}`);
                     debugResponse[artistId] = "error";
                 } finally {
                     await new Promise(res => setTimeout(res, 2000));
                 }
-            }
+            } // 闭合 artistIds 循环
 
             if (isManual) {
                 logger.mark(`[kkp-plugin] App API直连检查完毕，各画师状态：\n${JSON.stringify(debugResponse, null, 2)}`);
@@ -619,11 +682,12 @@ export class PixivPushPlugin extends plugin {
             return { state: hasUpdates ? "success" : "empty" };
 
         } catch (error) {
+            // 闭合顶层的 try-catch
             logger.error(`[kkp-plugin] 顶层推送逻辑崩溃: ${error.stack}`);
             return { state: "error", reason: error.message };
         }
-    }
-}
+    } // 闭合 executePushLogic 方法
+} // 闭合 PixivPushPlugin 类
 
 // ================= 定时任务 =================
 schedule.scheduleJob("0 */2 * * *", async () => {
