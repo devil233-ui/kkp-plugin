@@ -591,8 +591,8 @@ export class PixivPushPlugin extends plugin {
                             }
 
                             try {
-                                // 【第一重：常规原图直发】给 15 秒试探
-                                const res = await sendWithTimeout(group.sendMsg(msg), 15000);
+                                // 【第一重：常规原图直发】试探
+                                const res = await sendWithTimeout(group.sendMsg(msg), 50000);
                                 if (!res || res.message_id === undefined) throw new Error("无返回ID，疑似被风控吞图");
                                 sendSuccessGroups.push(gid);
                             } catch (err) {
@@ -604,7 +604,7 @@ export class PixivPushPlugin extends plugin {
                                         // 【第二重：原图合并转发】抄 RSS 插件的作业
                                         const forwardNode = [makeNode(msg)];
                                         const forwardMsg = await group.makeForwardMsg(forwardNode);
-                                        const res2 = await sendWithTimeout(group.sendMsg(forwardMsg), 30000);
+                                        const res2 = await sendWithTimeout(group.sendMsg(forwardMsg), 50000);
                                         if (res2 && res2.message_id !== undefined) fallbackSuccess = true;
                                     } catch (err2) {
                                         logger.warn(`[kkp-plugin] 原图合并转发失败 (${err2.message})，尝试终极翻转...`);
