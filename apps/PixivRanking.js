@@ -24,8 +24,8 @@ export class DailyRankImageFetcher extends plugin {
         });
     }
 
-    getRecallConfig() {
-        const path = "./plugins/kkp-plugin/config/recall.yaml";
+    getConfig() {
+        const path = "./plugins/kkp-plugin/config/config.yaml";
         try {
             if (fs.existsSync(path)) {
                 const fileContents = fs.readFileSync(path, "utf8");
@@ -176,7 +176,7 @@ export class DailyRankImageFetcher extends plugin {
                 ? await e.group.makeForwardMsg(validImageMessages)
                 : await e.friend.makeForwardMsg(validImageMessages);
 
-            const recallConfig = this.getRecallConfig();
+            const recallConfig = this.getConfig();
 
             const sentMessage = await e.reply(forwardMsg);
 

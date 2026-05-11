@@ -92,9 +92,9 @@ export class PixivImageFetcher extends plugin {
         };
     }
 
-    getRecallConfig() {
-        const path = "./plugins/kkp-plugin/config/recall.yaml";
-        if (!fs.existsSync(path)) return { "recall": false, "time": 60000 };
+    getConfig() {
+        const path = "./plugins/kkp-plugin/config/config.yaml";
+        if (!fs.existsSync(path)) return { "recall": false, "time": 60000, "max_images": 40 };
         return YAML.parse(fs.readFileSync(path, "utf8")) || {};
     }
 
@@ -148,13 +148,16 @@ export class PixivImageFetcher extends plugin {
         }
 
         // 3. 数量拦截，防止 OOM 炸机
+        const pluginConfig = this.getConfig();
+        const maxImages = pluginConfig.max_images || 40; // 读不到就默认40
+
         const totalImages = targetImageUrls.length;
         let finalUrls = targetImageUrls;
         let overflowMsg = "";
 
-        if (totalImages > 40) {
-            finalUrls = targetImageUrls.slice(0, 40);
-            overflowMsg = `\n[⚠️本作多达 ${totalImages} 张图，为防止伊涅芙过载，仅展示前 40 张]`;
+        if (totalImages > maxImages) {
+            finalUrls = targetImageUrls.slice(0, maxImages);
+            overflowMsg = `\n[⚠️本作多达 ${totalImages} 张图，为防止伊涅芙过载，仅展示前 ${maxImages} 张]`;
         }
 
         // 4. 核心机制：官方直连主链路 + 极其稳定的公用反代备胎
@@ -261,7 +264,7 @@ export class PixivImageFetcher extends plugin {
         }
 
         // 11. 撤回控制
-        const recallConfig = this.getRecallConfig();
+        const recallConfig = this.getConfig();
         if (recallConfig.recall && sendRes && sendRes.message_id) {
             setTimeout(() => {
                 e.isGroup ? e.group.recallMsg(sendRes.message_id) : e.friend.recallMsg(sendRes.message_id);

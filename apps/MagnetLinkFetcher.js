@@ -25,8 +25,8 @@ export class MagnetLinkFetcher extends plugin {
         });
     }
 
-    getRecallConfig() {
-        const path = "./plugins/kkp-plugin/config/recall.yaml";
+    getConfig() {
+        const path = "./plugins/kkp-plugin/config/config.yaml";
         const fileContents = fs.readFileSync(path, "utf8");
         return YAML.parse(fileContents);
     }
@@ -226,7 +226,7 @@ export class MagnetLinkFetcher extends plugin {
                     : await e.friend.makeForwardMsg(msgList);
 
                 // 处理消息撤回
-                const recallConfig = this.getRecallConfig();
+                const recallConfig = this.getConfig();
                 const sentMessage = await e.reply(forwardMsg);
 
                 if (recallConfig.recall) {

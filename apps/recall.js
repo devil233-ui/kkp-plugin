@@ -32,10 +32,10 @@ export class RecallConfigController extends plugin {
     }
 
     getConfigPath() {
-        return "./plugins/kkp-plugin/config/recall.yaml";
+        return "./plugins/kkp-plugin/config/config.yaml";
     }
 
-    getRecallConfig() {
+    getConfig() {
         const path = this.getConfigPath();
         if (!fs.existsSync(path)) {
             return { recall: true, time: 40000, mode: "all", order: "popular_d" };
@@ -55,7 +55,7 @@ export class RecallConfigController extends plugin {
         }
 
         const [ , action ] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
-        const config = this.getRecallConfig();
+        const config = this.getConfig();
 
         if (action === "开启") {
             config.recall = true;
@@ -81,7 +81,7 @@ export class RecallConfigController extends plugin {
             return;
         }
 
-        const config = this.getRecallConfig();
+        const config = this.getConfig();
         config.time = time;
         this.writeRecallConfig(config);
 
@@ -95,7 +95,7 @@ export class RecallConfigController extends plugin {
 
         const [ , modeStr ] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
         const modeMap = { "0": "all", "1": "safe", "2": "r18" };
-        const config = this.getRecallConfig();
+        const config = this.getConfig();
         config.mode = modeMap[modeStr];
         this.writeRecallConfig(config);
 
@@ -109,7 +109,7 @@ export class RecallConfigController extends plugin {
 
         const [ , preferenceStr ] = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
         const orderMap = { "0": "popular_d", "1": "popular_male_d", "2": "popular_female_d" };
-        const config = this.getRecallConfig();
+        const config = this.getConfig();
         config.order = orderMap[preferenceStr];
         this.writeRecallConfig(config);
 

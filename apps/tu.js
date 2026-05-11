@@ -28,8 +28,8 @@ export class CosImageFetcher extends plugin {
         });
     }
 
-    getRecallConfig() {
-        const path = "./plugins/kkp-plugin/config/recall.yaml";
+    getConfig() {
+        const path = "./plugins/kkp-plugin/config/config.yaml";
         const fileContents = fs.readFileSync(path, "utf8");
         return YAML.parse(fileContents);
     }
@@ -104,7 +104,7 @@ export class CosImageFetcher extends plugin {
                     ? await e.group.makeForwardMsg(msgList) 
                     : await e.friend.makeForwardMsg(msgList);
 
-                const recallConfig = this.getRecallConfig();
+                const recallConfig = this.getConfig();
 
                 const sentMessage = await e.reply(forwardMsg);
 

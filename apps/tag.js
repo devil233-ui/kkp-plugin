@@ -3,12 +3,7 @@ import axios from "axios";
 import fs from "fs";
 import YAML from "yaml";
 import { pid, tag as fetchTag } from "../config/api.js";
-import { execFile } from "child_process";
-import path from "path";
-import { promisify } from "util";
-
-const execFileAsync = promisify(execFile);
-const pythonCommand = process.platform === "win32" ? "python" : "python3";
+import { FlipImage } from "./flip.js"; // 彻底干掉 Python，引入我们原生的纯 JS 翻转
 
 export class SetuImageFetcher extends plugin {
     constructor() {
@@ -26,10 +21,10 @@ export class SetuImageFetcher extends plugin {
         });
     }
 
-    getRecallConfig() {
-        const path = "./plugins/kkp-plugin/config/recall.yaml";
-        const fileContents = fs.readFileSync(path, "utf8");
-        return YAML.parse(fileContents);
+    getConfig() {
+        const path = "./plugins/kkp-plugin/config/config.yaml";
+        if (!fs.existsSync(path)) return { "recall": false, "time": 60000, "max_images": 40 };
+        return YAML.parse(fs.readFileSync(path, "utf8")) || {};
     }
 
     async fetchPixivImageDetails(pidValue) {
@@ -43,69 +38,22 @@ export class SetuImageFetcher extends plugin {
     }
 
     async fetchTagSearchResults(tagValue) {
-        const config = this.getRecallConfig();
+        const config = this.getConfig();
         const mode = config.mode || "all";
         const order = config.order || "popular_d";
         const apiUrl = `${fetchTag(tagValue)}&mode=${mode}&order=${order}`;
         
-        const response = await axios.get(apiUrl);
-        return response.data.body.data.map(item => item.id);
-
+        try {
+            const response = await axios.get(apiUrl);
+            return response.data.body.data.map(item => item.id);
+        } catch (error) {
+            return [];
+        }
     }
 
     getRandomIds(ids, count) {
         const shuffled = ids.sort(() => 0.5 - Math.random());
         return shuffled.slice(0, count);
-    }
-
-    async modifyImageWithPython(imageBuffer, imageName) {
-        const tempImagePath = `./plugins/kkp-plugin/temp/temp_${Date.now()}_${imageName}.jpg`;
-        const cleanUp = () => {
-            if (fs.existsSync(tempImagePath)) {
-                fs.unlinkSync(tempImagePath);
-            }
-        };
-
-        try {
-            fs.writeFileSync(tempImagePath, imageBuffer);
-            const { stdout } = await execFileAsync(pythonCommand, [
-                "./plugins/kkp-plugin/modify_image.py",
-                tempImagePath
-            ]);
-
-            const modifiedImagePath = stdout.trim();
-            if (!fs.existsSync(modifiedImagePath)) {
-                throw new Error("Python处理图片失败");
-            }
-
-            const modifiedImageBuffer = fs.readFileSync(modifiedImagePath);
-            cleanUp();
-            fs.unlinkSync(modifiedImagePath);
-            
-            return modifiedImageBuffer;
-        } catch (error) {
-            cleanUp();
-            throw error;
-        }
-    }
-
-    deleteTempFiles() {
-        const tempDir = path.resolve("./plugins/kkp-plugin/temp");
-        fs.readdir(tempDir, (err, files) => {
-            if (err) {
-                console.error("读取temp目录失败：", err);
-                return;
-            }
-
-            files.forEach(file => {
-                const filePath = path.join(tempDir, file);
-                fs.unlink(filePath, err => {
-                    if (err) {
-                        console.error(`删除文件失败：${filePath}`, err);
-                    }
-                });
-            });
-        });
     }
 
     async _processSetuImages(e) {
@@ -124,93 +72,107 @@ export class SetuImageFetcher extends plugin {
         }
 
         const selectedPids = this.getRandomIds(idsList, num);
-        const detailsPromises = selectedPids.map(pid => this.fetchPixivImageDetails(pid));
-        const detailsList = await Promise.all(detailsPromises);
+        await e.reply("图片PID获取完毕，正在高速下载与处理中，请稍候...");
 
-        await e.reply("图片获取完毕，正在发送中...");
+        // 智能提取你自己的反代域名
+        let myProxyDomain = "i.pximg.net";
+        try { myProxyDomain = new URL(pid("1")).hostname; } catch (err) {}
 
-        const imageMessages = await Promise.all(detailsList.map(async(details, index) => {
-            if (details && details.body) {
-                const imageUrls = Object.values(details.body.urls).map(url => `${url}`);
-                const tagList = details.body.tags.tags.map(tagObj => tagObj.tag);
-                
-                const imageBuffers = await Promise.all(imageUrls.map(async(imageUrl) => {
+        let forwardNodes = [];
+        let flipNodes = [];
+        let linkNodes = [];
+
+        // 放弃 Promise.all 轰炸，改为 for 循环，保护服务器内存
+        for (let i = 0; i < selectedPids.length; i++) {
+            const details = await this.fetchPixivImageDetails(selectedPids[i]);
+            if (!details || !details.body) continue;
+
+            const body = details.body;
+            const imageUrls = Object.values(body.urls).map(url => `${url}`);
+            const tagList = body.tags.tags.map(tagObj => tagObj.tag);
+
+            let buffers = [];
+            let fallbackUrls = [];
+
+            // 核心机制：双保险下载
+            for (let rawUrl of imageUrls) {
+                const proxyUrl = rawUrl.replace("i.pximg.net", myProxyDomain);
+                const backupUrl = rawUrl.replace("i.pximg.net", "pixiv.manbomanbo.asia");
+                fallbackUrls.push(backupUrl);
+
+                try {
+                    const imgRes = await axios.get(proxyUrl, { responseType: "arraybuffer", timeout: 10000 });
+                    buffers.push(imgRes.data);
+                } catch (err1) {
                     try {
-                        const imageDataResponse = await axios.get(imageUrl, { 
-                            responseType: "arraybuffer",
-                            maxContentLength: Infinity,
-                            maxBodyLength: Infinity
-                        });
-                        return imageDataResponse.data;
-                    } catch (error) {
-                        console.error(`下载图片失败: ${imageUrl}`, error);
-                        return null;
+                        const imgRes2 = await axios.get(backupUrl, { responseType: "arraybuffer", timeout: 15000 });
+                        buffers.push(imgRes2.data);
+                    } catch (err2) {
+                        // 都失败则跳过该图
                     }
-                }));
-
-                const validImageBuffers = imageBuffers.filter(buffer => buffer !== null);
-                
-                const modifiedImageSegments = await Promise.all(validImageBuffers.map(async(buffer, i) => {
-                    try {
-                        const modifiedBuffer = await this.modifyImageWithPython(buffer, `image_${index}_${i}`);
-                        return segment.image(modifiedBuffer);
-                    } catch (error) {
-                        console.error("图片处理失败:", error);
-                        return null;
-                    }
-                }));
-
-                const filteredImageSegments = modifiedImageSegments.filter(segment => segment !== null);
-                
-                const msgData = [
-                    `id：${details.body.illustId}\n`,
-                    `画师：${details.body.userName}（${details.body.userId}）\n`,
-                    `是否ai：${details.body.aiType === 2? "是" : "否"}\n`,
-                    `标题：${details.body.illustTitle}\n`,
-                    `上传时间：${details.body.createDate}\n`,
-                    `♥：${details.body.likeCount}\n`,
-                    `😊：${details.body.bookmarkCount}\n`,
-                    `👁：${details.body.viewCount}\n`,
-                    `tag：${tagList.join(", ")}\n`,
-                    ...filteredImageSegments
-                ];
-
-                return {
-                    message: msgData,
-                    nickname: e.user_id.toString(),
-                    user_id: e.user_id,
-                };
-            }
-            return null;
-        }));
-
-        const validImageMessages = imageMessages.filter(msg => msg !== null);
-
-        if (validImageMessages.length > 0) {
-            try {
-                const forwardMsg = e.isGroup 
-                    ? await e.group.makeForwardMsg(validImageMessages) 
-                    : await e.friend.makeForwardMsg(validImageMessages);
-
-                const recallConfig = this.getRecallConfig();
-
-                const sentMessage = await e.reply(forwardMsg);
-
-                if (recallConfig.recall) {
-                    setTimeout(() => {
-                        if (e.isGroup) {
-                            e.group.recallMsg(sentMessage.message_id);
-                        } else {
-                            e.friend.recallMsg(sentMessage.message_id);
-                        }
-                    }, recallConfig.time);
                 }
-
-                this.deleteTempFiles();
-            } catch (error) {
-                console.error("发送消息失败:", error);
-                await e.reply("消息发送失败");
             }
+
+            if (buffers.length === 0) continue;
+
+            // 格式统一为最新的紧凑版
+            const msgData = [
+                `id：https://www.pixiv.net/artworks/${body.illustId}\n`,
+                `画师：${body.userName}（${body.userId}）\n`,
+                `是否ai：${body.aiType === 2 ? "是" : "否"}\n`,
+                `标题：${body.illustTitle}\n`,
+                `上传时间：${body.createDate}\n`,
+                `♥：${body.likeCount}；😊：${body.bookmarkCount}；👁：${body.viewCount}\n`,
+                `tag：${tagList.join(", ")}\n`
+            ];
+
+            const nodeTemplate = (content) => ({ message: content, nickname: e.user_id.toString(), user_id: e.user_id });
+
+            // 准备第一重原图 Node
+            forwardNodes.push(nodeTemplate([...msgData, ...buffers.map(b => segment.image(b))]));
+
+            // 准备直链兜底 Node
+            linkNodes.push(nodeTemplate([...msgData, `\n图片加载失败，请看备用直链：\n${fallbackUrls.join("\n")}`]));
+
+            // 准备翻转兜底 Node（提前在内存中洗掉 MD5）
+            let flippedBuffers = [];
+            for (let b of buffers) {
+                const flipped = await FlipImage(b);
+                if (flipped) flippedBuffers.push(flipped);
+            }
+            if (flippedBuffers.length > 0) {
+                flipNodes.push(nodeTemplate([...msgData, ...flippedBuffers.map(b => segment.image(b))]));
+            }
+        }
+
+        if (forwardNodes.length === 0) {
+            return e.reply("全部获取失败，节点可能挂了。");
+        }
+
+        let sendRes = null;
+
+        // 第一重：直接发送原图图包合集
+        let forwardMsg = await (e.isGroup ? e.group.makeForwardMsg(forwardNodes) : e.friend.makeForwardMsg(forwardNodes));
+        sendRes = await e.reply(forwardMsg).catch(() => null);
+
+        // 第二重：风控拦截则直接发送洗好 MD5 的翻转图包
+        if (!sendRes || sendRes.message_id === undefined) {
+            await e.reply("原图合集触发风控，正在尝试纯 JS 翻转后重发...", true, { recallMsg: 0 });
+            let flipMsg = await (e.isGroup ? e.group.makeForwardMsg(flipNodes) : e.friend.makeForwardMsg(flipNodes));
+            sendRes = await e.reply(flipMsg).catch(() => null);
+        }
+
+        // 第三重：最高级拦截，无奈交出直链
+        if (!sendRes || sendRes.message_id === undefined) {
+            let linkMsg = await (e.isGroup ? e.group.makeForwardMsg(linkNodes) : e.friend.makeForwardMsg(linkNodes));
+            sendRes = await e.reply(linkMsg).catch(() => null);
+        }
+
+        const config = this.getConfig();
+        if (config.recall && sendRes && sendRes.message_id) {
+            setTimeout(() => {
+                e.isGroup ? e.group.recallMsg(sendRes.message_id) : e.friend.recallMsg(sendRes.message_id);
+            }, config.time);
         }
     }
 }

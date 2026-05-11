@@ -71,7 +71,7 @@ export class PixivPushPlugin extends plugin {
 
     async sendKKPImage(e) {
         const imagePath = "./plugins/kkp-plugin/config/kkp.jpg";
-        let msg = [segment.image(`file://${imagePath}`)];
+        let msg = [ segment.image(`file://${imagePath}`) ];
         await e.reply(msg);
         return true;
     }
@@ -316,7 +316,7 @@ export class PixivPushPlugin extends plugin {
         if (groupTags.whitelist && groupTags.whitelist.length > 0) response += `白名单：${groupTags.whitelist.join(", ")}\n`;
         if (groupTags.blacklist && groupTags.blacklist.length > 0) response += `黑名单：${groupTags.blacklist.join(", ")}\n`;
         response += "\n";
-        for (const [artistId, artistName] of Object.entries(data[groupId].artists)) {
+        for (const [ artistId, artistName ] of Object.entries(data[groupId].artists)) {
             response += `${artistName}  ${artistId}\n`;
         }
         await e.reply(response);
@@ -492,7 +492,7 @@ export class PixivPushPlugin extends plugin {
 
                         // 从新到旧遍历 App API 返回的这批图（通常是近 30 张）
                         for (let ill of latestIllusts) {
-                            const illustTags = ill.tags.flatMap(t => [t.name, t.translated_name]).filter(Boolean);
+                            const illustTags = ill.tags.flatMap(t => [ t.name, t.translated_name ]).filter(Boolean);
                             // 黑白名单判定
                             if (blacklist.some(b => illustTags.some(i => i.includes(b)))) continue;
                             if (whitelist.length > 0 && !whitelist.some(w => illustTags.some(i => i.includes(w)))) continue;
@@ -510,10 +510,10 @@ export class PixivPushPlugin extends plugin {
                     targetIllusts.sort((a, b) => a.id - b.id);
 
                     for (let illust of targetIllusts) {
-                        const illustTags = illust.tags.flatMap(t => [t.name, t.translated_name]).filter(Boolean);
+                        const illustTags = illust.tags.flatMap(t => [ t.name, t.translated_name ]).filter(Boolean);
                         let validGroups = [];
 
-                        for (let gid of [...needsUpdateGroups, ...initGroups]) {
+                        for (let gid of [ ...needsUpdateGroups, ...initGroups ]) {
                             if (initGroups.includes(gid)) {
                                 if (illust.id === initIllustMap[gid]) validGroups.push(gid);
                                 continue;
@@ -530,7 +530,7 @@ export class PixivPushPlugin extends plugin {
                             targetImgUrls = illust.meta_pages.slice(0, 5).map(p => p.image_urls.original);
                         } else if (illust.meta_single_page && illust.meta_single_page.original_image_url) {
                             // 提取单图的原图 (original)
-                            targetImgUrls = [illust.meta_single_page.original_image_url];
+                            targetImgUrls = [ illust.meta_single_page.original_image_url ];
                         }
 
                         let imgBuffers = [];
@@ -580,7 +580,7 @@ export class PixivPushPlugin extends plugin {
                             const group = Bot.pickGroup(Number(gid));
                             if (!group) continue;
 
-                            let msg = [infoMsg];
+                            let msg = [ infoMsg ];
                             if (imgBuffers.length > 0) {
                                 for (let buf of imgBuffers) msg.push(segment.image(buf));
                                 if (illust.page_count > targetImgUrls.length) {
@@ -602,7 +602,7 @@ export class PixivPushPlugin extends plugin {
                                 if (imgBuffers.length > 0) {
                                     try {
                                         // 【第二重：原图合并转发】抄 RSS 插件的作业
-                                        const forwardNode = [makeNode(msg)];
+                                        const forwardNode = [ makeNode(msg) ];
                                         const forwardMsg = await group.makeForwardMsg(forwardNode);
                                         const res2 = await sendWithTimeout(group.sendMsg(forwardMsg), 50000);
                                         if (res2 && res2.message_id !== undefined) fallbackSuccess = true;
@@ -613,7 +613,7 @@ export class PixivPushPlugin extends plugin {
                                     if (!fallbackSuccess) {
                                         try {
                                             // 【第三重：翻转洗 MD5 后合并转发】防风控的终极杀器
-                                            let retryMsg = [infoMsg];
+                                            let retryMsg = [ infoMsg ];
                                             let flipSuccess = false;
                                             for (let buf of imgBuffers) {
                                                 const flippedBuffer = await FlipImage(buf);
@@ -624,7 +624,7 @@ export class PixivPushPlugin extends plugin {
                                             }
 
                                             if (flipSuccess) {
-                                                const retryForwardNode = [makeNode(retryMsg)];
+                                                const retryForwardNode = [ makeNode(retryMsg) ];
                                                 const flipForwardMsg = await group.makeForwardMsg(retryForwardNode);
                                                 const res3 = await sendWithTimeout(group.sendMsg(flipForwardMsg), 30000);
                                                 if (res3 && res3.message_id !== undefined) fallbackSuccess = true;
@@ -657,7 +657,7 @@ export class PixivPushPlugin extends plugin {
                         hasUpdates = true;
 
                         // 【被不小心删掉的：防丢图 Redis 更新逻辑】
-                        for (let gid of [...needsUpdateGroups, ...initGroups]) {
+                        for (let gid of [ ...needsUpdateGroups, ...initGroups ]) {
                             // 如果该群在发送名单里，但是“没在”成功名单里，说明四重尝试全失败了，跳过更新进度
                             if (validGroups.includes(gid) && !sendSuccessGroups.includes(gid)) {
                                 continue;
@@ -690,7 +690,7 @@ export class PixivPushPlugin extends plugin {
 } // 闭合 PixivPushPlugin 类
 
 // ================= 定时任务 =================
-schedule.scheduleJob("0 */2 * * *", async () => {
+schedule.scheduleJob("0 */2 * * *", async() => {
     const randomDelay = Math.floor(Math.random() * 60 * 60 * 1000);
     setTimeout(() => {
         logger.mark("[kkp-plugin] 触发定时自动画师推送检查");

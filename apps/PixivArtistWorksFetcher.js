@@ -29,8 +29,8 @@ export class PixivArtistWorksFetcher extends plugin {
         });
     }
 
-    getRecallConfig() {
-        const path = "./plugins/kkp-plugin/config/recall.yaml";
+    getConfig() {
+        const path = "./plugins/kkp-plugin/config/config.yaml";
         const fileContents = fs.readFileSync(path, "utf8");
         return YAML.parse(fileContents);
     }
@@ -164,7 +164,7 @@ export class PixivArtistWorksFetcher extends plugin {
             ? await e.group.makeForwardMsg(combinedMsgData)
             : await e.friend.makeForwardMsg(combinedMsgData);
 
-        const recallConfig = this.getRecallConfig();
+        const recallConfig = this.getConfig();
         const sentMessage = await e.reply(forwardMsg);
 
         if (recallConfig.recall) {
