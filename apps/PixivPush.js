@@ -5,7 +5,7 @@ import crypto from "crypto";
 import YAML from "yaml";
 import fs from "fs";
 import path from "path";
-import { FlipImage } from "./flip.js";
+import { sendPixivImageWithFallback } from "./pixivSender.js";
 
 function getRefreshToken() {
     const configPath = "./plugins/kkp-plugin/config/token.yaml";
@@ -558,101 +558,25 @@ export class PixivPushPlugin extends plugin {
                             `是否ai：${illust.illust_ai_type === 2 ? "是" : "否"}`,
                             `标题：${illust.title}`,
                             `上传时间：${formattedTime}`,
-                            `tag：${tagsStr}`,
-                            // `【获取原图可使用pidxxx】`
+                            `♥：${illust.total_bookmarks} 👁：${illust.total_view}`,
+                            `tag：${tagsStr}${extraInfo}`
                         ].join("\n");
 
-                        let sendSuccessGroups = [];
-
-                        // 【新增辅助工具】自定义 Promise 超时熔断器
-                        const sendWithTimeout = (promise, timeoutMs = 10000) => {
-                            return Promise.race([
-                                promise,
-                                new Promise((_, reject) => setTimeout(() => reject(new Error("自定义发送超时")), timeoutMs))
-                            ]);
-                        };
-
-                        // 【新增辅助工具】构造合并转发节点
-                        const makeNode = (content) => ({ message: content, nickname: Bot.nickname, user_id: Bot.uin });
+                        const proxyUrls = targetImgUrls.map(url => url.replace("i.pximg.net", "pixiv.manbomanbo.asia"));
 
                         for (let gid of validGroups) {
-                            // 【核心修复】强制将 gid 转为 Number，确保拿到完整的群对象和 makeForwardMsg 方法！
                             const group = Bot.pickGroup(Number(gid));
                             if (!group) continue;
 
-                            let msg = [ infoMsg ];
-                            if (imgBuffers.length > 0) {
-                                for (let buf of imgBuffers) msg.push(segment.image(buf));
-                                if (illust.page_count > targetImgUrls.length) {
-                                    msg.push(`\n[本作多达 ${illust.page_count} 张图，此处仅展示前 ${targetImgUrls.length} 张`);
-                                }
-                            } else {
-                                msg.push("\n[图片获取失败，请点击链接前往查看：\n" + targetImgUrls.join);
-                            }
+                            // 传入 group 对象，引擎内部会自动识别并适配群发 API
+                            // 传入 data[gid].recallConfig (如果有的话)，没有就传空让引擎走默认不撤回
+                            // 同样，直接把 targetImgUrls 扔过去
+                            const isSuccess = await sendPixivImageWithFallback(group, [ infoMsg ], targetImgUrls, data[gid]?.recallConfig || null);
 
-                            try {
-                                // 【第一重：常规原图直发】试探
-                                const res = await sendWithTimeout(group.sendMsg(msg), 50000);
-                                if (!res || res.message_id === undefined) throw new Error("无返回ID，疑似被风控吞图");
-                                sendSuccessGroups.push(gid);
-                            } catch (err) {
-                                logger.warn(`[kkp-plugin] 群 ${gid} 常规推送超时或失败(${err.message})，尝试合并转发降级...`);
+                            if (isSuccess) sendSuccessGroups.push(gid);
 
-                                let fallbackSuccess = false;
-                                if (imgBuffers.length > 0) {
-                                    try {
-                                        // 【第二重：原图合并转发】抄 RSS 插件的作业
-                                        const forwardNode = [ makeNode(msg) ];
-                                        const forwardMsg = await group.makeForwardMsg(forwardNode);
-                                        const res2 = await sendWithTimeout(group.sendMsg(forwardMsg), 50000);
-                                        if (res2 && res2.message_id !== undefined) fallbackSuccess = true;
-                                    } catch (err2) {
-                                        logger.warn(`[kkp-plugin] 原图合并转发失败 (${err2.message})，尝试终极翻转...`);
-                                    }
-
-                                    if (!fallbackSuccess) {
-                                        try {
-                                            // 【第三重：翻转洗 MD5 后合并转发】防风控的终极杀器
-                                            let retryMsg = [ infoMsg ];
-                                            let flipSuccess = false;
-                                            for (let buf of imgBuffers) {
-                                                const flippedBuffer = await FlipImage(buf);
-                                                if (flippedBuffer) {
-                                                    retryMsg.push(segment.image(flippedBuffer));
-                                                    flipSuccess = true;
-                                                }
-                                            }
-
-                                            if (flipSuccess) {
-                                                const retryForwardNode = [ makeNode(retryMsg) ];
-                                                const flipForwardMsg = await group.makeForwardMsg(retryForwardNode);
-                                                const res3 = await sendWithTimeout(group.sendMsg(flipForwardMsg), 30000);
-                                                if (res3 && res3.message_id !== undefined) fallbackSuccess = true;
-                                            }
-                                        } catch (err3) {
-                                            logger.error(`[kkp-plugin] 翻转后发送失败: ${err3.message}`);
-                                        }
-                                    }
-                                }
-
-                                if (fallbackSuccess) {
-                                    sendSuccessGroups.push(gid);
-                                    continue;
-                                }
-
-                                // 【第四重：纯文本链接兜底】如果上面三套全折了，直接丢纯文本
-                                const linkMsg = [
-                                    infoMsg,
-                                    "\n图片经过多次尝试均被吞图，请点击链接前往查看：\n" + targetImgUrls.join("\n")
-                                ].join("\n");
-                                await sendWithTimeout(group.sendMsg(linkMsg), 10000).then(() => {
-                                    sendSuccessGroups.push(gid);
-                                }).catch(e => logger.error("发送兜底链接失败", e));
-                            }
-
-                            // 延时防风控
-                            await new Promise(r => setTimeout(r, 2000));
-                        } // 闭合 validGroups 循环
+                            await new Promise(r => setTimeout(r, 2000)); // 推送频次高，加点间隔
+                        }
 
                         hasUpdates = true;
 

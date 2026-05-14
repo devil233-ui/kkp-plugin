@@ -5,8 +5,7 @@ import fs from "fs";
 import path from "path";
 import YAML from "yaml";
 import crypto from "crypto";
-// import { pid as pidAPI } from "../config/api.js";
-import { FlipImage } from "./flip.js";
+import { sendPixivImageWithFallback } from "./pixivSender.js";
 
 const CLIENT_ID = "MOBrBDS8blbauoSck0ZfDbtuzpyT";
 const CLIENT_SECRET = "lsACyCD94FhDUtGTXi3QzcFE2uU1hqtDaKeqrdwj";
@@ -24,7 +23,7 @@ export class PixivImageFetcher extends plugin {
             priority: -114514,
             rule: [
                 {
-                    reg: "#?pid\\s*(\\d+)|pixiv\\.net\\/(?:\\w+\\/)?(?:artworks|i)\\/(\\d+)",
+                    reg: "#?pid(\\d+)|pixiv\\.net\\/(?:\\w+\\/)?(?:artworks|i)\\/(\\d+)",
                     fnc: "processPixivImages"
                 }
             ]
@@ -123,7 +122,6 @@ export class PixivImageFetcher extends plugin {
             return e.reply(`Token 异常，请检查 token.yaml: ${tokenResult.error}`);
         }
 
-        // 1. 彻底抛弃 Web API，直接调 App API 获取作品详情 (原生自带多图数据，无视404)
         const illustUrl = `https://app-api.pixiv.net/v1/illust/detail?illust_id=${matchedPid}`;
         let resData;
         try {
@@ -139,7 +137,7 @@ export class PixivImageFetcher extends plugin {
 
         const illust = resData.illust;
 
-        // 2. 提取原图链接 (与 PixivPush 逻辑完全一致)
+        // 提取原图链接
         let targetImageUrls = [];
         if (illust.meta_pages && illust.meta_pages.length > 0) {
             targetImageUrls = illust.meta_pages.map(p => p.image_urls.original);
@@ -147,10 +145,9 @@ export class PixivImageFetcher extends plugin {
             targetImageUrls = [illust.meta_single_page.original_image_url];
         }
 
-        // 3. 数量拦截，防止 OOM 炸机
+        // 数量拦截
         const pluginConfig = this.getConfig();
-        const maxImages = pluginConfig.max_images || 40; // 读不到就默认40
-
+        const maxImages = pluginConfig.max_images || 40; 
         const totalImages = targetImageUrls.length;
         let finalUrls = targetImageUrls;
         let overflowMsg = "";
@@ -160,41 +157,7 @@ export class PixivImageFetcher extends plugin {
             overflowMsg = `\n[⚠️本作多达 ${totalImages} 张图，为防止伊涅芙过载，仅展示前 ${maxImages} 张]`;
         }
 
-        // 4. 核心机制：官方直连主链路 + 极其稳定的公用反代备胎
-        let imgBuffers = [];
-        let fallbackUrls = []; // 用于发给用户点击的直链兜底
-
-        for (let url of finalUrls) {
-            // 你要求的那个稳定备胎：pixiv.manbomanbo.asia
-            const backupUrl = url.replace("i.pximg.net", "pixiv.manbomanbo.asia");
-            fallbackUrls.push(backupUrl);
-
-            try {
-                // 第一梯队：优先尝试拉取官方原图
-                // 注意：直连 i.pximg.net 必须带上 Referer 防盗链，否则必 403
-                const imgRes = await axios.get(url, { 
-                    responseType: "arraybuffer", 
-                    timeout: 10000,
-                    headers: { "Referer": "https://app-api.pixiv.net/" } 
-                });
-                imgBuffers.push(imgRes.data);
-            } catch (err1) {
-                try {
-                    // 第二梯队：主链路阵亡/被墙，丝滑切入你提供的备用反代
-                    logger.warn(`[kkp-plugin] 官方节点下载失败，切入备胎反代: ${backupUrl}`);
-                    // 走第三方反代通常不需要复杂的 Referer，直接拉即可
-                    const imgRes2 = await axios.get(backupUrl, { 
-                        responseType: "arraybuffer", 
-                        timeout: 15000 
-                    });
-                    imgBuffers.push(imgRes2.data);
-                } catch (err2) {
-                    logger.error(`[kkp-plugin] 备胎节点也挂了: ${err2.message}`);
-                }
-            }
-        }
-
-        // 5. 拼装文案
+        // 【被我误删的罪魁祸首：恢复时间和标签的解析】
         const tagsStr = illust.tags.map(t => t.translated_name || t.name).join(", ");
         const date = new Date(illust.create_date);
         const utc8Date = new Date(date.getTime() + 8 * 60 * 60 * 1000);
@@ -213,62 +176,8 @@ export class PixivImageFetcher extends plugin {
 
         if (overflowMsg) msgData.push(overflowMsg + "\n");
 
-        if (imgBuffers.length === 0) {
-            return e.reply("图片下载失败，官方主节点与备用反代均无响应，请稍后再试。");
-        }
-        const makeNode = (content) => ({ message: content, nickname: e.user_id.toString(), user_id: e.user_id });
-
-        let sendRes = null;
-
-        // 7. 第一重：<=9张，直发
-        if (imgBuffers.length <= 9) {
-            let directMsg = [...msgData];
-            for (let buf of imgBuffers) directMsg.push(segment.image(buf));
-            sendRes = await e.reply(directMsg).catch(() => null);
-        }
-
-        // 8. 第二重：>9张，或直发失败 -> 合并转发
-        if (!sendRes || sendRes.message_id === undefined) {
-            let initialMsg = [...msgData];
-            for (let buf of imgBuffers) initialMsg.push(segment.image(buf));
-            
-            let forwardMsg = await (e.isGroup ? e.group.makeForwardMsg([makeNode(initialMsg)]) : e.friend.makeForwardMsg([makeNode(initialMsg)]));
-            sendRes = await e.reply(forwardMsg).catch(() => null);
-        }
-
-        // 9. 第三重：翻转兜底
-        if (!sendRes || sendRes.message_id === undefined) {
-            await e.reply("图片触发风控拦截，正在尝试水平翻转后重发...", true, { recallMsg: 0 });
-            
-            let retryMsg = [...msgData];
-            let flipSuccess = false;
-            for (let buf of imgBuffers) {
-                const flippedBuffer = await FlipImage(buf);
-                if (flippedBuffer) {
-                    retryMsg.push(segment.image(flippedBuffer));
-                    flipSuccess = true;
-                }
-            }
-
-            if (flipSuccess) {
-                let retryForward = await (e.isGroup ? e.group.makeForwardMsg([makeNode(retryMsg)]) : e.friend.makeForwardMsg([makeNode(retryMsg)]));
-                sendRes = await e.reply(retryForward).catch(() => null);
-            }
-        }
-
-        // 10. 第四重：直链兜底
-        if (!sendRes || sendRes.message_id === undefined) {
-            let linkMsg = [...msgData, `\n图片经过多次尝试最终发送失败，请点击备用链接查看：\n${fallbackUrls.join("\n")}`];
-            let linkForward = await (e.isGroup ? e.group.makeForwardMsg([makeNode(linkMsg)]) : e.friend.makeForwardMsg([makeNode(linkMsg)]));
-            sendRes = await e.reply(linkForward).catch(() => null);
-        }
-
-        // 11. 撤回控制
-        const recallConfig = this.getConfig();
-        if (recallConfig.recall && sendRes && sendRes.message_id) {
-            setTimeout(() => {
-                e.isGroup ? e.group.recallMsg(sendRes.message_id) : e.friend.recallMsg(sendRes.message_id);
-            }, recallConfig.time);
-        }
+        // 将事件对象 e、前置文案、官方图片数组、以及撤回配置直接扔给公共引擎！
+        // 引擎内部会自动调用 api.js 的 pximgProxy 进行反代转换
+        await sendPixivImageWithFallback(e, msgData, finalUrls, pluginConfig);
     }
 }

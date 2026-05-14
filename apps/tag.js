@@ -129,10 +129,10 @@ export class SetuImageFetcher extends plugin {
             const nodeTemplate = (content) => ({ message: content, nickname: e.user_id.toString(), user_id: e.user_id });
 
             // 准备第一重原图 Node
-            forwardNodes.push(nodeTemplate([...msgData, ...buffers.map(b => segment.image(b))]));
+            forwardNodes.push(nodeTemplate([ ...msgData, ...buffers.map(b => segment.image(b)) ]));
 
             // 准备直链兜底 Node
-            linkNodes.push(nodeTemplate([...msgData, `\n图片加载失败，请看备用直链：\n${fallbackUrls.join("\n")}`]));
+            linkNodes.push(nodeTemplate([ ...msgData, `\n图片加载失败，请看备用直链：\n${fallbackUrls.join("\n")}` ]));
 
             // 准备翻转兜底 Node（提前在内存中洗掉 MD5）
             let flippedBuffers = [];
@@ -141,7 +141,7 @@ export class SetuImageFetcher extends plugin {
                 if (flipped) flippedBuffers.push(flipped);
             }
             if (flippedBuffers.length > 0) {
-                flipNodes.push(nodeTemplate([...msgData, ...flippedBuffers.map(b => segment.image(b))]));
+                flipNodes.push(nodeTemplate([ ...msgData, ...flippedBuffers.map(b => segment.image(b)) ]));
             }
         }
 
