@@ -109,7 +109,7 @@ export class PixivImageFetcher extends plugin {
 
             if (!matchedPid) return false;
 
-            await e.reply(`正在通过 App API 获取作品: ${matchedPid}...`);
+            // await e.reply(`正在通过 App API 获取作品: ${matchedPid}...`);
             await this.sendPixivDetails(e, matchedPid);
         } catch (error) {
             await e.reply(`发生错误：${error.message}`);
