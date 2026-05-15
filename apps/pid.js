@@ -145,39 +145,25 @@ export class PixivImageFetcher extends plugin {
             targetImageUrls = [ illust.meta_single_page.original_image_url ];
         }
 
-        // 数量拦截
         const pluginConfig = this.getConfig();
-        const maxImages = pluginConfig.max_images || 40; 
-        const totalImages = targetImageUrls.length;
-        let finalUrls = targetImageUrls;
-        let overflowMsg = "";
-
-        if (totalImages > maxImages) {
-            finalUrls = targetImageUrls.slice(0, maxImages);
-            overflowMsg = `\n[⚠️本作多达 ${totalImages} 张图，为防止伊涅芙过载，仅展示前 ${maxImages} 张]`;
-        }
-
-        // 【被我误删的罪魁祸首：恢复时间和标签的解析】
         const tagsStr = illust.tags.map(t => t.translated_name || t.name).join(", ");
         const date = new Date(illust.create_date);
         const utc8Date = new Date(date.getTime() + 8 * 60 * 60 * 1000);
         const formattedTime = `${utc8Date.getUTCFullYear()}-${String(utc8Date.getUTCMonth() + 1).padStart(2, "0")}-${String(utc8Date.getUTCDate()).padStart(2, "0")} ${String(utc8Date.getUTCHours()).padStart(2, "0")}:${String(utc8Date.getUTCMinutes()).padStart(2, "0")}:${String(utc8Date.getUTCSeconds()).padStart(2, "0")}`;
 
-        const pageCountInfo = totalImages > 1 ? ` (共${totalImages}张)` : "";
+        let ugoiraAlert = illust.illust_type === 2 ? "\n⚠️本作是 Pixiv 动图(Ugoira)，此处仅展示首帧封面，请去原站查看动效" : "";
+        
         const msgData = [
-            `https://www.pixiv.net/artworks/${illust.id}${pageCountInfo}\n`,
+            `https://www.pixiv.net/artworks/${illust.id} (共${illust.page_count}张)\n`,
             `画师：${illust.user.name}（${illust.user.id}）\n`,
             `是否ai：${illust.illust_ai_type === 2 ? "是" : "否"}\n`,
             `标题：${illust.title}\n`,
             `上传时间：${formattedTime}\n`,
             `♥：${illust.total_bookmarks} 👁：${illust.total_view}\n`,
-            `tag：${tagsStr}\n`
+            `tag：${tagsStr}${ugoiraAlert}`
         ];
 
-        if (overflowMsg) msgData.push(overflowMsg + "\n");
-
-        // 将事件对象 e、前置文案、官方图片数组、以及撤回配置直接扔给公共引擎！
-        // 引擎内部会自动调用 api.js 的 pximgProxy 进行反代转换
-        await sendPixivImageWithFallback(e, msgData, finalUrls, pluginConfig);
+        // 直接把全量 urls 扔给引擎，引擎会自动根据 pluginConfig.max_images 截断并警告
+        await sendPixivImageWithFallback(e, msgData, targetImageUrls, pluginConfig);
     }
 }
