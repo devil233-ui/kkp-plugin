@@ -552,6 +552,7 @@ export class PixivPushPlugin extends plugin {
 
                         const tagsStr = illust.tags.map(t => t.translated_name || t.name).join(", ");
                         const pageCountInfo = illust.page_count > 1 ? ` (共${illust.page_count}P)` : "";
+                        let extraInfo = illust.page_count > targetImgUrls.length ? `\n[本作多达 ${illust.page_count} 张图，此处仅展示前 ${targetImgUrls.length} 张]` : "";
                         const infoMsg = [
                             `爷爷，您关注的画师：${illust.user.name}（${illust.user.id}）更新了`,
                             `https://www.pixiv.net/artworks/${illust.id}${pageCountInfo}`,
@@ -563,7 +564,7 @@ export class PixivPushPlugin extends plugin {
                         ].join("\n");
 
                         const proxyUrls = targetImgUrls.map(url => url.replace("i.pximg.net", "pixiv.manbomanbo.asia"));
-
+                        let sendSuccessGroups = [];
                         for (let gid of validGroups) {
                             const group = Bot.pickGroup(Number(gid));
                             if (!group) continue;

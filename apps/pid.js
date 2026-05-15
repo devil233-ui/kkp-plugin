@@ -70,7 +70,7 @@ export class PixivImageFetcher extends plugin {
             });
 
             const data = await res.json();
-            if (data.has_error) return { error: `刷新Token失败` };
+            if (data.has_error) return { error: "刷新Token失败" };
 
             accessTokenCache = data.response.access_token;
             tokenExpireTime = Date.now() + (data.response.expires_in - 300) * 1000;
@@ -142,7 +142,7 @@ export class PixivImageFetcher extends plugin {
         if (illust.meta_pages && illust.meta_pages.length > 0) {
             targetImageUrls = illust.meta_pages.map(p => p.image_urls.original);
         } else if (illust.meta_single_page && illust.meta_single_page.original_image_url) {
-            targetImageUrls = [illust.meta_single_page.original_image_url];
+            targetImageUrls = [ illust.meta_single_page.original_image_url ];
         }
 
         // 数量拦截
