@@ -2,12 +2,8 @@ import plugin from "../../../lib/plugins/plugin.js";
 import axios from "axios";
 import fs from "fs";
 import YAML from "yaml";
-import { pid, user } from "../config/api.js";
-import { execFile } from "child_process";
-import { promisify } from "util";
-
-const execFileAsync = promisify(execFile);
-const pythonCommand = process.platform === "win32" ? "python" : "python3";
+import { sendPixivImageWithFallback, buildPixivMessage } from "./pixivSender.js";
+import { getAppApiHeaders } from "./pixivAuth.js"; // 【接入公共鉴权模块】
 
 export class PixivArtistWorksFetcher extends plugin {
     constructor() {
@@ -17,60 +13,25 @@ export class PixivArtistWorksFetcher extends plugin {
             event: "message",
             priority: 50,
             rule: [
-                {
-                    reg: "^#来(\\d+)张(\\d+)作品$",
-                    fnc: "processLatestArtistWorks"
-                },
-                {
-                    reg: "^#?随机(\\d+)张(\\d+)作品$",
-                    fnc: "processRandomArtistWorks"
-                }
+                { reg: "^#来(\\d+)张(\\d+)作品$", fnc: "processLatestArtistWorks" },
+                { reg: "^#?随机(\\d+)张(\\d+)作品$", fnc: "processRandomArtistWorks" }
             ]
         });
     }
 
     getConfig() {
         const path = "./plugins/kkp-plugin/config/config.yaml";
+        if (!fs.existsSync(path)) return { "max_images": 40, "recall": false, "time": 60000 };
         const fileContents = fs.readFileSync(path, "utf8");
-        return YAML.parse(fileContents);
+        return YAML.parse(fileContents) || {};
     }
 
-    async fetchArtistDetails(artistId) {
-        try {
-            const response = await axios.get(user(artistId));
-            return response.data;
-        } catch (error) {
-            throw new Error(`获取画师信息失败：${error.message}`, { cause: error });
-        }
-    }
-
-    async fetchWorkDetails(pidValue) {
-        try {
-            const response = await axios.get(pid(pidValue));
-            return response.data;
-        } catch (error) {
-            throw new Error(`获取作品信息失败：${error.message}`, { cause: error });
-        }
-    }
-
-    async modifyImageWithPython(imageBuffer, imageName) {
-        const tempImagePath = `./plugins/kkp-plugin/temp/temp_${imageName}.jpg`;
-
-        fs.writeFileSync(tempImagePath, imageBuffer);
-
-        try {
-            const { stdout } = await execFileAsync(pythonCommand, [ "./plugins/kkp-plugin/modify_image.py", tempImagePath ]);
-            const modifiedImagePath = stdout.trim();
-            const modifiedImageBuffer = fs.readFileSync(modifiedImagePath);
-
-            fs.unlinkSync(tempImagePath);
-            fs.unlinkSync(modifiedImagePath);
-
-            return modifiedImageBuffer;
-        } catch (error) {
-            fs.unlinkSync(tempImagePath);
-            throw error;
-        }
+    // 【新增】：读取当前群的黑白名单配置
+    getGroupTags(groupId) {
+        const filePath = "./plugins/kkp-plugin/config/dingyue.yaml";
+        if (!fs.existsSync(filePath)) return { whitelist: [], blacklist: [] };
+        const data = YAML.parse(fs.readFileSync(filePath, "utf8")) || {};
+        return data[groupId]?.tags || { whitelist: [], blacklist: [] };
     }
 
     async processLatestArtistWorks(e) {
@@ -89,97 +50,85 @@ export class PixivArtistWorksFetcher extends plugin {
         const artistId = match[2];
 
         if (num > 30) {
-            await e.reply("一次最多看30张哦");
+            await e.reply("一次最多看30部作品哦，太多会被封号的！");
             return;
         }
 
         try {
-            const artistData = await this.fetchArtistDetails(artistId);
+            // 一行代码搞定鉴权头！
+            const headers = await getAppApiHeaders();
+            
+            const url = `https://app-api.pixiv.net/v1/user/illusts?user_id=${artistId}&type=illust`;
+            const response = await axios.get(url, { headers, timeout: 10000 });
+            let illusts = response.data.illusts;
 
-            if (!artistData || artistData.error) {
-                await e.reply("请输入正确的画师ID");
+            if (!illusts || illusts.length === 0) {
+                await e.reply(`未找到画师 ${artistId} 的作品，可能是ID错误或此人未发图。`);
                 return;
             }
 
-            let workIDs;
-            const allWorkIDs = Object.keys(artistData.body.illusts).reverse();
-
-            if (isRandom) {
-                workIDs = this.shuffleArray(allWorkIDs).slice(0, num);
-            } else {
-                workIDs = allWorkIDs.slice(0, num);
+            // 【核心修复】：群黑白名单过滤！
+            if (e.isGroup) {
+                const groupTags = this.getGroupTags(e.group_id.toString());
+                const whitelist = groupTags.whitelist || [];
+                const blacklist = groupTags.blacklist || [];
+                
+                illusts = illusts.filter(ill => {
+                    const illustTags = ill.tags.flatMap(t => [ t.name, t.translated_name ]).filter(Boolean);
+                    if (blacklist.some(b => illustTags.some(i => i.includes(b)))) return false;
+                    if (whitelist.length > 0 && !whitelist.some(w => illustTags.some(i => i.includes(w)))) return false;
+                    return true;
+                });
+                
+                if (illusts.length === 0) {
+                    await e.reply("该画师的作品全部被当前群的黑白名单过滤掉了！");
+                    return;
+                }
             }
 
-            const workDetailsPromises = workIDs.map(workId => this.fetchWorkDetails(workId));
-            const workDetailsList = await Promise.all(workDetailsPromises);
+            let targetIllusts = illusts;
+            if (isRandom) {
+                targetIllusts = this.shuffleArray(targetIllusts).slice(0, num);
+            } else {
+                targetIllusts = targetIllusts.slice(0, num);
+            }
 
-            await this.sendCombinedWorkDetails(e, workDetailsList);
+            const pluginConfig = this.getConfig();
+            await e.reply(`正在发送画师 ${artistId} 的 ${targetIllusts.length} 部作品...`);
+
+            for (let i = 0; i < targetIllusts.length; i++) {
+                const illust = targetIllusts[i];
+                try {
+                    // 【核心修复】：先提取图片URL，再拼装文案，最后只调用一次引擎！
+                    let targetImgUrls = [];
+                    if (illust.meta_pages && illust.meta_pages.length > 0) {
+                        targetImgUrls = illust.meta_pages.map(p => p.image_urls.original);
+                    } else if (illust.meta_single_page && illust.meta_single_page.original_image_url) {
+                        targetImgUrls = [ illust.meta_single_page.original_image_url ];
+                    }
+
+                    const msgData = buildPixivMessage(illust);
+                    await sendPixivImageWithFallback(e, msgData, targetImgUrls, pluginConfig);
+
+                    if (i < targetIllusts.length - 1) {
+                        await new Promise(r => setTimeout(r, 2000));
+                    }
+                } catch (err) {
+                    logger.error(`[kkp-plugin] 发送作品 ${illust.id} 失败: ${err.message}`);
+                }
+            }
 
         } catch (error) {
-            await e.reply(`发生错误：${error.toString()}`);
-        }
-    }
-
-    async sendCombinedWorkDetails(e, workDetailsList) {
-        const combinedMsgData = [];
-
-        const imageDataTasks = workDetailsList.map(async(details, index) => {
-            const body = details.body;
-            const imageUrls = Object.values(body.urls);
-
-            const tagList = body.tags.tags.map(tagObj => tagObj.tag);
-
-            const msgData = [
-                `id：${body.illustId}\n`,
-                `画师：${body.userName}（${body.userId}）\n`,
-                `是否ai：${body.aiType === 2 ? "是" : "否"}\n`,
-                `标题：${body.illustTitle}\n`,
-                `上传时间：${body.createDate}\n`,
-                `♥：${body.likeCount}\n`,
-                `😊：${body.bookmarkCount}\n`,
-                `👁：${body.viewCount}\n`,
-                `tag：${tagList.join(", ")}\n`
-            ].join("");
-
-            const imageBuffers = await Promise.all(
-                imageUrls.map(async(imageUrl, i) => {
-                    const response = await axios.get(imageUrl, { responseType: "arraybuffer" });
-                    return this.modifyImageWithPython(response.data, `image_${index}_${i}`);
-                })
-            );
-
-            return { msgData, imageBuffers };
-        });
-
-        const resolvedTasks = await Promise.all(imageDataTasks);
-
-        for (const { msgData, imageBuffers } of resolvedTasks) {
-            combinedMsgData.push({
-                message: [ msgData, ...imageBuffers.map(buffer => segment.image(buffer)) ],
-                forward: true
-            });
-        }
-
-        const forwardMsg = e.isGroup
-            ? await e.group.makeForwardMsg(combinedMsgData)
-            : await e.friend.makeForwardMsg(combinedMsgData);
-
-        const recallConfig = this.getConfig();
-        const sentMessage = await e.reply(forwardMsg);
-
-        if (recallConfig.recall) {
-            setTimeout(() => {
-                e.isGroup
-                    ? e.group.recallMsg(sentMessage.message_id)
-                    : e.friend.recallMsg(sentMessage.message_id);
-            }, recallConfig.time);
+            await e.reply(`发生错误：${error.message}`);
         }
     }
 
     shuffleArray(array) {
-        for (let i = array.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [ array[i], array[j] ] = [ array[j], array[i] ];
+        let currentIndex = array.length, randomIndex;
+        while (currentIndex !== 0) {
+            randomIndex = Math.floor(Math.random() * currentIndex);
+            currentIndex--;
+            [ array[currentIndex], array[randomIndex] ] = [ array[randomIndex], array[currentIndex] ];
         }
         return array;
     }

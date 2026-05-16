@@ -5,26 +5,7 @@ import crypto from "crypto";
 import YAML from "yaml";
 import fs from "fs";
 import path from "path";
-import { sendPixivImageWithFallback } from "./pixivSender.js";
-
-function getRefreshToken() {
-    const configPath = "./plugins/kkp-plugin/config/token.yaml";
-    if (!fs.existsSync(configPath)) {
-        // 自动生成模板配置文件
-        fs.writeFileSync(configPath, "RefreshToken: \"\"\n", "utf8");
-        return "";
-    }
-    const config = YAML.parse(fs.readFileSync(configPath, "utf8")) || {};
-    return config.RefreshToken ? String(config.RefreshToken).trim() : "";
-}
-
-const CLIENT_ID = "MOBrBDS8blbauoSck0ZfDbtuzpyT";
-const CLIENT_SECRET = "lsACyCD94FhDUtGTXi3QzcFE2uU1hqtDaKeqrdwj";
-const HASH_SECRET = "28c1fdd170a5204386cb1313c7077b34f83e4aaf4aa829ce78c231e05b0bae2c";
-
-// 内存缓存 access_token，订阅和推送共享
-let accessTokenCache = null;
-let tokenExpireTime = 0;
+import { sendPixivImageWithFallback, buildPixivMessage } from "./pixivSender.js";
 
 export class PixivPushPlugin extends plugin {
     constructor() {
@@ -82,71 +63,6 @@ export class PixivPushPlugin extends plugin {
         return true;
     }
 
-    // ================= Pixiv API 核心 =================
-    async getAccessToken() {
-        if (accessTokenCache && Date.now() < tokenExpireTime) {
-            return { token: accessTokenCache, error: null };
-        }
-
-        const clientTime = new Date().toISOString().split(".")[0] + "+00:00";
-        const clientHash = crypto.createHash("md5").update(clientTime + HASH_SECRET).digest("hex");
-
-        const refreshToken = getRefreshToken();
-        if (!refreshToken) {
-            logger.error("[kkp-plugin] 未配置 RefreshToken，请在 config/token.yaml 中填写");
-            return { token: null, error: "插件未配置 RefreshToken，请前往 token.yaml 填写" };
-        }
-
-        const params = new URLSearchParams({
-            "client_id": CLIENT_ID,
-            "client_secret": CLIENT_SECRET,
-            "grant_type": "refresh_token",
-            "refresh_token": refreshToken
-        });
-
-        try {
-            const res = await fetch("https://oauth.secure.pixiv.net/auth/token", {
-                method: "POST",
-                body: params.toString(),
-                headers: {
-                    "User-Agent": "PixivAndroidApp/5.0.234 (Android 11; Pixel 5)",
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "X-Client-Time": clientTime,
-                    "X-Client-Hash": clientHash,
-                    "App-OS": "android",
-                    "App-OS-Version": "11",
-                    "App-Version": "5.0.234"
-                }
-            });
-
-            const data = await res.json();
-            if (data.has_error) {
-                const errMsg = JSON.stringify(data.errors || data);
-                logger.error(`[kkp-plugin] 刷新Token失败: ${errMsg}`);
-                return { token: null, error: `Pixiv接口拒绝请求：${errMsg}` };
-            }
-
-            accessTokenCache = data.response.access_token;
-            tokenExpireTime = Date.now() + (data.response.expires_in - 300) * 1000;
-            logger.mark("[kkp-plugin] Pixiv Access Token 已成功刷新");
-            return { token: accessTokenCache, error: null };
-        } catch (error) {
-            logger.error(`[kkp-plugin] 获取Token报错: ${error.message}`);
-            return { token: null, error: `网络请求错误：${error.message}` };
-        }
-    }
-
-    getAppHeaders(token) {
-        return {
-            "Authorization": `Bearer ${token}`,
-            "User-Agent": "PixivAndroidApp/5.0.234 (Android 11; Pixel 5)",
-            "App-OS": "android",
-            "App-OS-Version": "11",
-            "App-Version": "5.0.234",
-            "Accept-Language": "zh-CN"
-        };
-    }
-
     // ================= 订阅管理相关指令 =================
     async subscribeArtist(e) {
         if (!e.isGroup) return;
@@ -166,18 +82,11 @@ export class PixivPushPlugin extends plugin {
             return;
         }
 
-        const tokenResult = await this.getAccessToken();
-        if (!tokenResult.token) {
-            await e.reply("Pixiv 授权失败，请检查 RefreshToken 是否正确。");
-            return;
-        }
-
         let latestId = 0;
         let artistName = "";
         try {
-            const res = await fetch(`https://app-api.pixiv.net/v1/user/illusts?user_id=${artistId}&type=illust`, {
-                headers: this.getAppHeaders(tokenResult.token)
-            });
+            const headers = await getAppApiHeaders();
+            const res = await fetch(`https://app-api.pixiv.net/v1/user/illusts?user_id=${artistId}&type=illust`,  { headers, timeout: 10000 });
             const resData = await res.json();
             if (!resData.illusts) {
                 await e.reply(`获取画师 ${artistId} 信息失败，请检查 ID 是否正确。`);
@@ -239,8 +148,7 @@ export class PixivPushPlugin extends plugin {
         let data = this.loadData();
         if (!data[groupId]) data[groupId] = { "pushEnabled": true, "artists": {}, "tags": { "whitelist": [], "blacklist": [] } };
 
-        const tokenResult = await this.getAccessToken();
-        if (!tokenResult.token) return e.reply(`授权失败：${tokenResult.error}`);
+        const headers = await getAppApiHeaders();
 
         await e.reply(`正在拉取 Pixiv 用户 ${targetUid} 的公开关注列表，由于名单较长（正在翻页），请稍候...`);
 
@@ -249,7 +157,7 @@ export class PixivPushPlugin extends plugin {
             let newArtists = [];
 
             while (url) {
-                const res = await fetch(url, { headers: this.getAppHeaders(tokenResult.token) });
+                const res = await fetch(url, {headers});
                 const resData = await res.json();
 
                 if (!resData.user_previews) {
@@ -423,9 +331,7 @@ export class PixivPushPlugin extends plugin {
             const artistIds = Object.keys(artistToGroups);
             if (artistIds.length === 0) return { state: "empty" };
 
-            const tokenResult = await this.getAccessToken();
-            if (!tokenResult.token) return { state: "error", reason: tokenResult.error };
-            const token = tokenResult.token;
+            const headers = await getAppApiHeaders();
 
             let hasUpdates = false;
             let debugResponse = {};
@@ -433,10 +339,7 @@ export class PixivPushPlugin extends plugin {
             for (let artistId of artistIds) {
                 try {
                     const url = `https://app-api.pixiv.net/v1/user/illusts?user_id=${artistId}&type=illust`;
-                    const res = await fetch(url, {
-                        headers: this.getAppHeaders(token),
-                        timeout: 10000
-                    });
+                    const res = await fetch(url, { headers, timeout: 10000 });
 
                     if (!res.ok) {
                         logger.error(`[kkp-plugin] 画师 ${artistId} API请求失败：${res.status}`);
@@ -508,19 +411,12 @@ export class PixivPushPlugin extends plugin {
                             const utc8Date = new Date(date.getTime() + 8 * 60 * 60 * 1000);
                             const formattedTime = `${utc8Date.getUTCFullYear()}-${String(utc8Date.getUTCMonth() + 1).padStart(2, "0")}-${String(utc8Date.getUTCDate()).padStart(2, "0")} ${String(utc8Date.getUTCHours()).padStart(2, "0")}:${String(utc8Date.getUTCMinutes()).padStart(2, "0")}:${String(utc8Date.getUTCSeconds()).padStart(2, "0")}`;
 
-                            const tagsStr = illust.tags.map(t => t.translated_name || t.name).join(", ");
-                            const pageCountInfo = illust.page_count > 1 ? ` (共${illust.page_count}P)` : "";
-                            let extraInfo = illust.page_count > targetImgUrls.length ? `\n[本作多达 ${illust.page_count} 张图，此处仅展示前 ${targetImgUrls.length} 张]` : "";
-                            let ugoiraAlert = illust.illust_type === 2 ? "\n[⚠️本作是 Pixiv特殊动图(Ugoira)，受限于机制此处仅展示首帧封面，请前往原站查看动效]" : "";
+                            // 传个前缀进去，引擎会帮你拼好
+                            const customPrefix = `爷爷，您关注的画师：${illust.user.name}（${illust.user.id}）更新了`;
+                            const infoMsg = buildPixivMessage(illust, customPrefix);
 
-                            const infoMsg = [
-                                `爷爷，您关注的画师：${illust.user.name}（${illust.user.id}）更新了`,
-                                `https://www.pixiv.net/artworks/${illust.id}${pageCountInfo}`,
-                                `是否ai：${illust.illust_ai_type === 2 ? "是" : "否"}`,
-                                `标题：${illust.title}`,
-                                `上传时间：${formattedTime}`,
-                                `tag：${tagsStr}${extraInfo}${ugoiraAlert}`
-                            ].join("\n");
+                            let sendConfig = { ...pluginConfig, ...(data[gid]?.recallConfig || {}) };
+                            const isSuccess = await sendPixivImageWithFallback(group, infoMsg, targetImgUrls, sendConfig);
 
                             let sendSuccessGroups = [];
                             for (let gid of validGroups) {
@@ -535,10 +431,10 @@ export class PixivPushPlugin extends plugin {
 
                                 // 将组装好的 sendConfig 传给引擎，引擎会自动根据里面的 max_images 进行截断并发出警告！
                                 const isSuccess = await sendPixivImageWithFallback(group, [ infoMsg ], targetImgUrls, sendConfig);
-                                
+
                                 if (isSuccess) sendSuccessGroups.push(gid);
 
-                                await new Promise(r => setTimeout(r, 2000)); 
+                                await new Promise(r => setTimeout(r, 2000));
                             }
 
                             hasUpdates = true;
