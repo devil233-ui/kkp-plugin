@@ -59,7 +59,7 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
     let overflowMsg = "";
     if (originalUrls.length > maxImages) {
         finalUrls = originalUrls.slice(0, maxImages);
-        overflowMsg = `[⚠️本作多达 ${originalUrls.length} 张图，为防止风控及过载，仅展示前 ${maxImages} 张]`;
+        overflowMsg = `[⚠️本作多达 ${originalUrls.length} 张图，为防止伊涅芙过载，仅展示前 ${maxImages} 张]`;
     }
 
     let isTextOnly = false;
@@ -115,7 +115,7 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
 
     const isUgoira = originalUrls.some(url => url.includes("ugoira"));
     if (isUgoira) {
-        mainParts.push("[⚠️本作是 Pixiv 动图(Ugoira)，此处仅展示首帧封面，请去原站查看动效]");
+        mainParts.push("[⚠️本作是Pixiv网页动图(Ugoira)，伊涅芙只能展示首帧封面，请前往原站查看]");
     }
 
     forwardNodes.push(makeNode([ mainParts.join("\n\n") ]));
@@ -211,7 +211,7 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
 
         // 5. 常规图片发送失败 -> 竖直翻转兜底 
         if (!allSuccess) {
-            let warnFlipRes = await sendMsg("⚠️检测到图片被风控吞噬，正在执行竖直翻转兜底...");
+            let warnFlipRes = await sendMsg("⚠️图片被风控，正在尝试翻转发送...");
             if (warnFlipRes && warnFlipRes.message_id) warningMsgIds.push(warnFlipRes.message_id);
 
             let flippedImages = [];
@@ -239,7 +239,7 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
                     for (let filePath of flippedImages) directMsg.push(segment.image(`file://${filePath}`));
                     let res = await sendMsg(directMsg);
                     if (!res || !res.message_id) {
-                        let warnFwdRes = await sendMsg("⚠️翻转直发依然被拦截，尝试打包合并转发最后挣扎...");
+                        let warnFwdRes = await sendMsg("⚠️翻转后依然被拦截，尝试打包合并转发...");
                         if (warnFwdRes && warnFwdRes.message_id) warningMsgIds.push(warnFwdRes.message_id);
 
                         let forwardNodes = [];
@@ -265,9 +265,9 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
 
     // 6. 撤回控制 (仅针对风控提示垃圾)
     if (recallConfig && recallConfig.recall && warningMsgIds.length > 0) {
-        let delayTime = recallConfig.time || 600;
-        if (delayTime <= 3600) delayTime = delayTime * 1000;
-
+        // 彻底抛弃大小判定！配置里写几秒，就老老实实乘 1000 转成毫秒！
+        const delayTime = (recallConfig.time || 600) * 1000;
+        
         setTimeout(() => {
             for (let msgId of warningMsgIds) recallMsg(msgId);
         }, delayTime);
