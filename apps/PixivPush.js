@@ -1,11 +1,12 @@
 import plugin from "../../../lib/plugins/plugin.js";
 import schedule from "node-schedule";
 import fetch from "node-fetch";
-import crypto from "crypto";
+// import crypto from "crypto";
 import YAML from "yaml";
 import fs from "fs";
 import path from "path";
 import { sendPixivImageWithFallback, buildPixivMessage } from "./pixivSender.js";
+import { getAppApiHeaders } from "./pixivAuth.js";
 
 export class PixivPushPlugin extends plugin {
     constructor() {
@@ -415,8 +416,7 @@ export class PixivPushPlugin extends plugin {
                             const customPrefix = `爷爷，您关注的画师：${illust.user.name}（${illust.user.id}）更新了`;
                             const infoMsg = buildPixivMessage(illust, customPrefix);
 
-                            let sendConfig = { ...pluginConfig, ...(data[gid]?.recallConfig || {}) };
-                            const isSuccess = await sendPixivImageWithFallback(group, infoMsg, targetImgUrls, sendConfig);
+                            // 【核心修复】：删除了外面那两行提前调用且使用未定义变量的幽灵代码！
 
                             let sendSuccessGroups = [];
                             for (let gid of validGroups) {
@@ -430,7 +430,8 @@ export class PixivPushPlugin extends plugin {
                                 };
 
                                 // 将组装好的 sendConfig 传给引擎，引擎会自动根据里面的 max_images 进行截断并发出警告！
-                                const isSuccess = await sendPixivImageWithFallback(group, [ infoMsg ], targetImgUrls, sendConfig);
+                                // 【核心修复】：去掉了 [ infoMsg ] 外层多余的中括号，防止二维数组引发引擎崩溃！
+                                const isSuccess = await sendPixivImageWithFallback(group, infoMsg, targetImgUrls, sendConfig);
 
                                 if (isSuccess) sendSuccessGroups.push(gid);
 
