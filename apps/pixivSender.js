@@ -14,15 +14,15 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
     const maxImages = config.max_images || 40;
 
     // 基础消息与撤回 API
-    const sendMsg = async (msg) => isEvent ? await target.reply(msg).catch(() => null) : await target.sendMsg(msg).catch(() => null);
-    const makeForwardMsg = async (nodes) => {
+    const sendMsg = async(msg) => isEvent ? await target.reply(msg).catch(() => null) : await target.sendMsg(msg).catch(() => null);
+    const makeForwardMsg = async(nodes) => {
         try {
             if (isEvent) return target.isGroup ? await target.group.makeForwardMsg(nodes) : await target.friend.makeForwardMsg(nodes);
             if (target.makeForwardMsg) return await target.makeForwardMsg(nodes);
             if (global.Bot?.makeForwardMsg) return await global.Bot.makeForwardMsg(nodes);
             return nodes.map(n => ({
                 type: "node",
-                data: { name: String(n.nickname), uin: String(n.user_id), content: Array.isArray(n.message) ? n.message : [n.message] }
+                data: { name: String(n.nickname), uin: String(n.user_id), content: Array.isArray(n.message) ? n.message : [ n.message ] }
             }));
         } catch (err) { return null; }
     };
@@ -33,7 +33,7 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
         } catch (e) { }
     };
 
-    const sendFileMsg = async (filePath) => {
+    const sendFileMsg = async(filePath) => {
         try {
             if (isEvent) {
                 if (target.isGroup && target.group?.sendFile) await target.group.sendFile(filePath);
@@ -108,26 +108,26 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
 
     // 1. 【区块化组装文字节点】
     let forwardNodes = [];
-    let mainParts = [initialMsg[0]];
+    let mainParts = [ initialMsg[0] ];
 
     if (overflowMsg) mainParts.push(overflowMsg);
-    mainParts.push(`风控时请戳反代直链：\n${proxyUrlsDisplay.join("\n")}`);
+    // mainParts.push(`风控时请戳反代直链：\n${proxyUrlsDisplay.join("\n")}`);
 
     const isUgoira = originalUrls.some(url => url.includes("ugoira"));
     if (isUgoira) {
         mainParts.push("[⚠️本作是Pixiv网页动图(Ugoira)，伊涅芙只能展示首帧封面，请前往原站查看]");
     }
 
-    forwardNodes.push(makeNode([mainParts.join("\n\n")]));
+    forwardNodes.push(makeNode([ mainParts.join("\n\n") ]));
 
     if (initialMsg[1]) {
-        forwardNodes.push(makeNode([initialMsg[1]]));
+        forwardNodes.push(makeNode([ initialMsg[1] ]));
     }
 
     let textForward = await makeForwardMsg(forwardNodes);
     let fallbackText = initialMsg[1] ? `${mainParts.join("\n\n")}\n\n${initialMsg[1]}` : mainParts.join("\n\n");
     // 主体文案发送后，不加入撤回列表！稳稳留在记录里！
-    await sendMsg(textForward || [fallbackText]);
+    await sendMsg(textForward || [ fallbackText ]);
 
     if (isTextOnly) {
         return true;
@@ -184,40 +184,32 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
         }
     }
 
-    // 4. 常规图片智能分流
+    // 4. 常规图片智能分流（子弹单发模式）
     let normalImages = localFiles.filter(f => !pixelBombs.includes(f));
-    let allSuccess = true;
+    // 【核心修复 1】：废弃全量布尔值，改用数组精准记录阵亡名单
+    let failedImages = []; 
 
     if (normalImages.length > 0) {
-        if (normalImages.length <= 3) {
-            let directMsg = [];
-            for (let filePath of normalImages) directMsg.push(segment.image(`file://${filePath}`));
-            let res = await sendMsg(directMsg);
-            if (!res || res.message_id === undefined) allSuccess = false;
-            // 发成功的图，不加入撤回列表！
-        } else {
-            const chunkArray = (arr, size) => Array.from({ length: Math.ceil(arr.length / size) }, (v, i) => arr.slice(i * size, i * size + size));
-            const fileChunks = chunkArray(normalImages, 5);
-            for (let i = 0; i < fileChunks.length; i++) {
-                let forwardNodes = [];
-                for (let filePath of fileChunks[i]) forwardNodes.push(makeNode([segment.image(`file://${filePath}`)]));
-                let forwardMsg = await makeForwardMsg(forwardNodes);
-                let res = forwardMsg ? await sendMsg(forwardMsg) : null;
-                if (!res || res.message_id === undefined) allSuccess = false;
-                // 发成功的合并图，不加入撤回列表！
-                if (i < fileChunks.length - 1) await new Promise(r => setTimeout(r, 2000));
+        // 第一轮：全量直发
+        for (let i = 0; i < normalImages.length; i++) {
+            let res = await sendMsg(segment.image(`file://${normalImages[i]}`)); 
+            if (!res || res.message_id === undefined) {
+                // 【核心修复 2】：哪张图死了，就把哪张图丢进伤员名单！
+                failedImages.push(normalImages[i]); 
             }
+            if (i < normalImages.length - 1) await new Promise(r => setTimeout(r, 1500));
         }
 
-        // 5. 常规图片发送失败 -> 竖直翻转兜底 
-        if (!allSuccess) {
-            let warnFlipRes = await sendMsg("⚠️图片被风控，正在尝试翻转发送...");
+        // 5. 针对性翻转兜底（仅抢救阵亡名单里的图）
+        if (failedImages.length > 0) {
+            let warnFlipRes = await sendMsg(`⚠️检测到 ${failedImages.length} 张图片被风控拦截，正在尝试竖直翻转重发...`);
             if (warnFlipRes && warnFlipRes.message_id) warningMsgIds.push(warnFlipRes.message_id);
 
             let flippedImages = [];
-            for (let i = 0; i < normalImages.length; i++) {
+            // 【核心修复 3】：遍历的对象从 normalImages 换成了 failedImages，绝不误伤成功发出的图
+            for (let i = 0; i < failedImages.length; i++) {
                 try {
-                    const sourceFilePath = normalImages[i];
+                    const sourceFilePath = failedImages[i];
                     if (sourceFilePath.endsWith(".gif")) {
                         flippedImages.push(sourceFilePath);
                         continue;
@@ -227,37 +219,29 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
                     if (flippedBuffer) {
                         const flippedFilePath = sourceFilePath.replace(".png", "_flip.png");
                         fs.writeFileSync(flippedFilePath, flippedBuffer);
-                        localFiles.push(flippedFilePath);
+                        localFiles.push(flippedFilePath); 
                         flippedImages.push(flippedFilePath);
                     }
-                } catch (e) { }
+                } catch (e) {}
             }
 
             if (flippedImages.length > 0) {
-                if (flippedImages.length <= 3) {
-                    let directMsg = [];
-                    for (let filePath of flippedImages) directMsg.push(segment.image(`file://${filePath}`));
-                    let res = await sendMsg(directMsg);
+                for (let i = 0; i < flippedImages.length; i++) {
+                    let res = await sendMsg(segment.image(`file://${flippedImages[i]}`));
                     if (!res || !res.message_id) {
-                        let warnFwdRes = await sendMsg("⚠️翻转后依然被拦截，尝试打包合并转发...");
-                        if (warnFwdRes && warnFwdRes.message_id) warningMsgIds.push(warnFwdRes.message_id);
-
-                        let forwardNodes = [];
-                        for (let filePath of flippedImages) forwardNodes.push(makeNode([segment.image(`file://${filePath}`)]));
-                        let retryForward = await makeForwardMsg(forwardNodes);
-                        await sendMsg(retryForward);
-                        // 最后的合并转发图，不撤回！
+                        // 【核心新增】：提取阵亡文件名的特征（如 145386381_p0），从顶部的直链池里精准捞出它专属的 URL
+                        let fileNameMatch = flippedImages[i].match(/(\d+_(?:p|ugoira)\d+)/);
+                        let deadProxyUrl = fileNameMatch ? proxyUrlsDisplay.find(u => u.includes(fileNameMatch[1])) : "";
+                        
+                        let failText = deadProxyUrl 
+                            ? `⚠️该图片风控阵亡，请戳专属反代直链查看：\n${deadProxyUrl}` 
+                            : "⚠️翻转重发依然被拦截，该图片已彻底阵亡...";
+                        
+                        // 注意：只发消息，不再将 message_id 推入 warningMsgIds！
+                        // 确保这个带有直链的“阵亡通报”永久留在记录里，取代原图供你查阅！
+                        await sendMsg(failText);
                     }
-                } else {
-                    const chunkArray = (arr, size) => Array.from({ length: Math.ceil(arr.length / size) }, (v, i) => arr.slice(i * size, i * size + size));
-                    const flippedChunks = chunkArray(flippedImages, 5);
-                    for (let i = 0; i < flippedChunks.length; i++) {
-                        let forwardNodes = [];
-                        for (let filePath of flippedChunks[i]) forwardNodes.push(makeNode([segment.image(`file://${filePath}`)]));
-                        let retryForward = await makeForwardMsg(forwardNodes);
-                        await sendMsg(retryForward);
-                        if (i < flippedChunks.length - 1) await new Promise(r => setTimeout(r, 2000));
-                    }
+                    if (i < flippedImages.length - 1) await new Promise(r => setTimeout(r, 1500));
                 }
             }
         }
@@ -327,5 +311,5 @@ export function buildPixivMessage(illust, customPrefix = "") {
     }
 
     // 如果有简介则返回包含两个节点文本的数组，否则只返回主信息节点
-    return captionNode ? [mainInfo, captionNode] : [mainInfo];
+    return captionNode ? [ mainInfo, captionNode ] : [ mainInfo ];
 }
