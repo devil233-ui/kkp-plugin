@@ -4,6 +4,7 @@ import path from "path";
 import { FlipImage } from "./flip.js";
 import { pximgProxy } from "../config/api.js";
 const sentPrivatePids = new Set();
+import { getAppApiHeaders } from "./pixivAuth.js";
 
 // 注意第4个参数统一改名为 config，内部解构提取
 export async function sendPixivImageWithFallback(target, initialMsg, originalUrls, config = {}) {
@@ -14,15 +15,15 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
     const maxImages = config.max_images || 40;
 
     // 基础消息与撤回 API
-    const sendMsg = async(msg) => isEvent ? await target.reply(msg).catch(() => null) : await target.sendMsg(msg).catch(() => null);
-    const makeForwardMsg = async(nodes) => {
+    const sendMsg = async (msg) => isEvent ? await target.reply(msg).catch(() => null) : await target.sendMsg(msg).catch(() => null);
+    const makeForwardMsg = async (nodes) => {
         try {
             if (isEvent) return target.isGroup ? await target.group.makeForwardMsg(nodes) : await target.friend.makeForwardMsg(nodes);
             if (target.makeForwardMsg) return await target.makeForwardMsg(nodes);
             if (global.Bot?.makeForwardMsg) return await global.Bot.makeForwardMsg(nodes);
             return nodes.map(n => ({
                 type: "node",
-                data: { name: String(n.nickname), uin: String(n.user_id), content: Array.isArray(n.message) ? n.message : [ n.message ] }
+                data: { name: String(n.nickname), uin: String(n.user_id), content: Array.isArray(n.message) ? n.message : [n.message] }
             }));
         } catch (err) { return null; }
     };
@@ -33,7 +34,7 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
         } catch (e) { }
     };
 
-    const sendFileMsg = async(filePath) => {
+    const sendFileMsg = async (filePath) => {
         try {
             if (isEvent) {
                 if (target.isGroup && target.group?.sendFile) await target.group.sendFile(filePath);
@@ -59,7 +60,7 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
     let overflowMsg = "";
     if (originalUrls.length > maxImages) {
         finalUrls = originalUrls.slice(0, maxImages);
-        overflowMsg = `[⚠️本作多达 ${originalUrls.length} 张图，为防止伊涅芙过载，仅展示前 ${maxImages} 张]`;
+        overflowMsg = `⚠️本作多达 ${originalUrls.length} 张图，为防止伊涅芙过载，仅展示前 ${maxImages} 张`;
     }
 
     let isTextOnly = false;
@@ -108,32 +109,36 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
 
     // 1. 【区块化组装文字节点】
     let forwardNodes = [];
-    let mainParts = [ initialMsg[0] ];
+    let mainParts = [initialMsg[0]];
 
     if (overflowMsg) mainParts.push(overflowMsg);
     // mainParts.push(`风控时请戳反代直链：\n${proxyUrlsDisplay.join("\n")}`);
 
+    // const isUgoira = originalUrls.some(url => url.includes("ugoira"));
+    // if (isUgoira) {
+    //     mainParts.push("[⚠️本作是Pixiv网页动图(Ugoira)，伊涅芙只能展示首帧封面，请前往原站查看]");
+    // }
     const isUgoira = originalUrls.some(url => url.includes("ugoira"));
     if (isUgoira) {
-        mainParts.push("[⚠️本作是Pixiv网页动图(Ugoira)，伊涅芙只能展示首帧封面，请前往原站查看]");
+        mainParts.push("✨本作是Pixiv网页动图(Ugoira)，已调用外部专属服务为您实时渲染为 GIF");
     }
 
-    forwardNodes.push(makeNode([ mainParts.join("\n\n") ]));
+    forwardNodes.push(makeNode([mainParts.join("\n\n")]));
 
     if (initialMsg[1]) {
-        forwardNodes.push(makeNode([ initialMsg[1] ]));
+        forwardNodes.push(makeNode([initialMsg[1]]));
     }
 
     let textForward = await makeForwardMsg(forwardNodes);
     let fallbackText = initialMsg[1] ? `${mainParts.join("\n\n")}\n\n${initialMsg[1]}` : mainParts.join("\n\n");
     // 主体文案发送后，不加入撤回列表！稳稳留在记录里！
-    await sendMsg(textForward || [ fallbackText ]);
+    await sendMsg(textForward || [fallbackText]);
 
     if (isTextOnly) {
         return true;
     }
 
-    // 2. 下载至本地，扫描体积雷达
+    // 2. 下载至本地，扫描体积雷达（植入 Ugoira 云端合成拦截）
     for (let i = 0; i < finalUrls.length; i++) {
         const rawUrl = finalUrls[i];
         const backupUrls = proxyUrlsPool[i];
@@ -142,8 +147,50 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
         const match = rawUrl.match(/(\d+_(?:p|ugoira)\d+)/);
         if (match) filePrefix = match[1];
 
-        const filePath = path.join(tempDir, `${filePrefix}.png`);
+        // 【核心新增】：如果是动图，立刻外包给美国机专属 API
+        if (rawUrl.includes("ugoira")) {
+            const pidMatch = rawUrl.match(/(\d+)_ugoira/);
+            const pid = pidMatch ? pidMatch[1] : null;
 
+            if (pid) {
+                let warnMsg = await sendMsg("⏳检测到高帧率动图，正呼叫海外服务器进行无损压缩渲染，请稍候...");
+                if (warnMsg && warnMsg.message_id) warningMsgIds.push(warnMsg.message_id);
+
+                try {
+                    // 云端合成比较耗时，把超时时间放宽到 60 秒
+                    // 1. 从咱们自己的鉴权模块里秒取缓存的 headers
+                    const appHeaders = await getAppApiHeaders();
+                    // 2. 剥离出纯净的 access_token (去掉 "Bearer " 前缀)
+                    const accessToken = appHeaders.Authorization.replace("Bearer ", "");
+
+                    /// 3. 从配置中读取独立 API 地址，未配置则默认兜底本地环回
+                    const apiUrl = config.ugoira_api || "http://127.0.0.1:3008/ugoira";
+                    const apiRes = await axios.post(apiUrl, {
+                        pid: pid,
+                        access_token: accessToken
+                    }, { timeout: 60000 });
+
+                    if (apiRes.data && apiRes.data.status === "success") {
+                        const gifBuffer = Buffer.from(apiRes.data.data, 'base64');
+                        const gifPath = path.join(tempDir, `${filePrefix}.gif`); // 必须以 .gif 结尾
+                        fs.writeFileSync(gifPath, gifBuffer);
+
+                        localFiles.push(gifPath);
+                        const stats = fs.statSync(gifPath);
+                        // GIF通常较大，同样进雷达扫描，超过10MB走文件形式发送防风控
+                        if (stats.size > 10 * 1024 * 1024) pixelBombs.push(gifPath);
+
+                        continue; // GIF 渲染成功，直接跳过后面的普通下载逻辑！
+                    }
+                } catch (apiErr) {
+                    let failWarn = await sendMsg(`⚠️云端 GIF 渲染超时或失败，已自动降级为您下载高清静态首帧图...`);
+                    if (failWarn && failWarn.message_id) warningMsgIds.push(failWarn.message_id);
+                }
+            }
+        }
+
+        // 默认逻辑：常规静态图下载（也是动图合成失败时的兜底降级方案）
+        const filePath = path.join(tempDir, `${filePrefix}.png`);
         let buf = null;
         try {
             const imgRes = await axios.get(rawUrl, { responseType: "arraybuffer", timeout: 15000, headers: { "Referer": "https://app-api.pixiv.net/" } });
@@ -187,15 +234,15 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
     // 4. 常规图片智能分流（子弹单发模式）
     let normalImages = localFiles.filter(f => !pixelBombs.includes(f));
     // 【核心修复 1】：废弃全量布尔值，改用数组精准记录阵亡名单
-    let failedImages = []; 
+    let failedImages = [];
 
     if (normalImages.length > 0) {
         // 第一轮：全量直发
         for (let i = 0; i < normalImages.length; i++) {
-            let res = await sendMsg(segment.image(`file://${normalImages[i]}`)); 
+            let res = await sendMsg(segment.image(`file://${normalImages[i]}`));
             if (!res || res.message_id === undefined) {
                 // 【核心修复 2】：哪张图死了，就把哪张图丢进伤员名单！
-                failedImages.push(normalImages[i]); 
+                failedImages.push(normalImages[i]);
             }
             if (i < normalImages.length - 1) await new Promise(r => setTimeout(r, 1500));
         }
@@ -219,10 +266,10 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
                     if (flippedBuffer) {
                         const flippedFilePath = sourceFilePath.replace(".png", "_flip.png");
                         fs.writeFileSync(flippedFilePath, flippedBuffer);
-                        localFiles.push(flippedFilePath); 
+                        localFiles.push(flippedFilePath);
                         flippedImages.push(flippedFilePath);
                     }
-                } catch (e) {}
+                } catch (e) { }
             }
 
             if (flippedImages.length > 0) {
@@ -232,11 +279,11 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
                         // 【核心新增】：提取阵亡文件名的特征（如 145386381_p0），从顶部的直链池里精准捞出它专属的 URL
                         let fileNameMatch = flippedImages[i].match(/(\d+_(?:p|ugoira)\d+)/);
                         let deadProxyUrl = fileNameMatch ? proxyUrlsDisplay.find(u => u.includes(fileNameMatch[1])) : "";
-                        
-                        let failText = deadProxyUrl 
-                            ? `⚠️该图片风控阵亡，请戳专属反代直链查看：\n${deadProxyUrl}` 
+
+                        let failText = deadProxyUrl
+                            ? `⚠️该图片风控阵亡，请戳专属反代直链查看：\n${deadProxyUrl}`
                             : "⚠️翻转重发依然被拦截，该图片已彻底阵亡...";
-                        
+
                         // 注意：只发消息，不再将 message_id 推入 warningMsgIds！
                         // 确保这个带有直链的“阵亡通报”永久留在记录里，取代原图供你查阅！
                         await sendMsg(failText);
@@ -251,7 +298,7 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
     if (recallConfig && recallConfig.recall && warningMsgIds.length > 0) {
         // 彻底抛弃大小判定！配置里写几秒，就老老实实乘 1000 转成毫秒！
         const delayTime = (recallConfig.time || 600) * 1000;
-        
+
         setTimeout(() => {
             for (let msgId of warningMsgIds) recallMsg(msgId);
         }, delayTime);
@@ -311,5 +358,5 @@ export function buildPixivMessage(illust, customPrefix = "") {
     }
 
     // 如果有简介则返回包含两个节点文本的数组，否则只返回主信息节点
-    return captionNode ? [ mainInfo, captionNode ] : [ mainInfo ];
+    return captionNode ? [mainInfo, captionNode] : [mainInfo];
 }
