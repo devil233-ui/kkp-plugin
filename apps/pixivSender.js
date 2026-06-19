@@ -223,7 +223,7 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
 
     // 3. 超过 10MB 的图强制转为文件发送
     if (pixelBombs.length > 0) {
-        let warnRes = await sendMsg(`检测到 ${pixelBombs.length} 张大体积图，需以文件格式强制发送...`);
+        let warnRes = await sendMsg(`检测到 ${pixelBombs.length} 张大体积图，需以文件格式强制发送。若长时间未收到可能是网络抽风，请重发链接或pid。`);
         if (warnRes && warnRes.message_id) warningMsgIds.push(warnRes.message_id);
         for (let filePath of pixelBombs) {
             await sendFileMsg(filePath);
