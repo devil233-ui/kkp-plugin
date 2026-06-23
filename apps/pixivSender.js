@@ -15,15 +15,15 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
     const maxImages = config.max_images || 40;
 
     // 基础消息与撤回 API
-    const sendMsg = async (msg) => isEvent ? await target.reply(msg).catch(() => null) : await target.sendMsg(msg).catch(() => null);
-    const makeForwardMsg = async (nodes) => {
+    const sendMsg = async(msg) => isEvent ? await target.reply(msg).catch(() => null) : await target.sendMsg(msg).catch(() => null);
+    const makeForwardMsg = async(nodes) => {
         try {
             if (isEvent) return target.isGroup ? await target.group.makeForwardMsg(nodes) : await target.friend.makeForwardMsg(nodes);
             if (target.makeForwardMsg) return await target.makeForwardMsg(nodes);
             if (global.Bot?.makeForwardMsg) return await global.Bot.makeForwardMsg(nodes);
             return nodes.map(n => ({
                 type: "node",
-                data: { name: String(n.nickname), uin: String(n.user_id), content: Array.isArray(n.message) ? n.message : [n.message] }
+                data: { name: String(n.nickname), uin: String(n.user_id), content: Array.isArray(n.message) ? n.message : [ n.message ] }
             }));
         } catch (err) { return null; }
     };
@@ -34,7 +34,7 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
         } catch (e) { }
     };
 
-    const sendFileMsg = async (filePath) => {
+    const sendFileMsg = async(filePath) => {
         try {
             if (isEvent) {
                 if (target.isGroup && target.group?.sendFile) await target.group.sendFile(filePath);
@@ -109,9 +109,14 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
     // 【核心修正】：专门用于收集过程中的风控提示，绝不碰主体推送的内容
     let warningMsgIds = [];
 
-    // 1. 【区块化组装文字节点】
+    // 1. 【区块化组装文字节点与独立文案发送】
+    // 优先将提取出的精简文案（画师/标题/时间）作为单独消息发送，不进合并转发
+    if (initialMsg[2]) {
+        await sendMsg(initialMsg[2]);
+    }
+
     let forwardNodes = [];
-    let mainParts = [initialMsg[0]];
+    let mainParts = [ initialMsg[0] ];
 
     if (overflowMsg) mainParts.push(overflowMsg);
     // mainParts.push(`风控时请戳反代直链：\n${proxyUrlsDisplay.join("\n")}`);
@@ -121,16 +126,16 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
         mainParts.push("✨本作是Pixiv网页动图(Ugoira)，已调用外部专属服务为您实时渲染为 GIF");
     }
 
-    forwardNodes.push(makeNode([mainParts.join("\n\n")]));
+    forwardNodes.push(makeNode([ mainParts.join("\n\n") ]));
 
     if (initialMsg[1]) {
-        forwardNodes.push(makeNode([initialMsg[1]]));
+        forwardNodes.push(makeNode([ initialMsg[1] ]));
     }
 
     let textForward = await makeForwardMsg(forwardNodes);
     let fallbackText = initialMsg[1] ? `${mainParts.join("\n\n")}\n\n${initialMsg[1]}` : mainParts.join("\n\n");
     // 主体文案发送后，不加入撤回列表！稳稳留在记录里！
-    await sendMsg(textForward || [fallbackText]);
+    await sendMsg(textForward || [ fallbackText ]);
 
     if (isTextOnly) {
         return true;
@@ -169,7 +174,7 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
                     }, { timeout: 60000 });
 
                     if (apiRes.data && apiRes.data.status === "success") {
-                        const gifBuffer = Buffer.from(apiRes.data.data, 'base64');
+                        const gifBuffer = Buffer.from(apiRes.data.data, "base64");
                         const gifPath = path.join(tempDir, `${filePrefix}.gif`); // 必须以 .gif 结尾
                         fs.writeFileSync(gifPath, gifBuffer);
 
@@ -181,7 +186,7 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
                         continue; // GIF 渲染成功，直接跳过后面的普通下载逻辑！
                     }
                 } catch (apiErr) {
-                    let failWarn = await sendMsg(`⚠️云端 GIF 渲染超时或失败，已自动降级为您下载高清静态首帧图...`);
+                    let failWarn = await sendMsg("⚠️云端 GIF 渲染超时或失败，已自动降级为您下载高清静态首帧图...");
                     if (failWarn && failWarn.message_id) warningMsgIds.push(failWarn.message_id);
                 }
             }
@@ -278,7 +283,7 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
                     let fileNameMatch = flippedImages[i].match(/(\d+_(?:p|ugoira)\d+)/);
                     let deadProxyUrl = fileNameMatch ? proxyUrlsDisplay.find(u => u.includes(fileNameMatch[1])) : "";
 
-                    let nodeContent = [segment.image("file://" + flippedImages[i])];
+                    let nodeContent = [ segment.image("file://" + flippedImages[i]) ];
                     if (deadProxyUrl) {
                         nodeContent.push("\n⚠️若图彻底阵亡，请戳备用的反代直链查看：\n" + deadProxyUrl);
                     }
@@ -330,22 +335,29 @@ export function buildPixivMessage(illust, customPrefix = "") {
     const utc8Date = new Date(date.getTime() + 8 * 60 * 60 * 1000);
     const formattedTime = `${utc8Date.getUTCFullYear()}-${String(utc8Date.getUTCMonth() + 1).padStart(2, "0")}-${String(utc8Date.getUTCDate()).padStart(2, "0")} ${String(utc8Date.getUTCHours()).padStart(2, "0")}:${String(utc8Date.getUTCMinutes()).padStart(2, "0")}:${String(utc8Date.getUTCSeconds()).padStart(2, "0")}`;
 
+    // === 1. 组装要单独外发的消息（按顺序：画师/推送前缀、标题、时间） ===
+    let artistLine = "画师：" + illust.user.name + "（" + illust.user.id + "）";
+    // 针对更新推送：如果有自定义前缀（如“爷爷...”），直接替换掉画师这一行
+    if (customPrefix) {
+        artistLine = customPrefix;
+    }
+    const extractedMsg = [
+        artistLine,
+        "标题：" + illust.title,
+        "上传时间：" + formattedTime
+    ].join("\n");
+
+    // === 2. 组装保留在合并转发内的基础消息 ===
     let msg = [];
-    if (customPrefix) msg.push(customPrefix);
-
     msg.push(
-        `https://www.pixiv.net/artworks/${illust.id} (共${illust.page_count}P)`,
-        `画师：${illust.user.name}（${illust.user.id}）`,
-        `是否ai：${illust.illust_ai_type === 2 ? "是" : "否"}`,
-        `标题：${illust.title}`,
-        `上传时间：${formattedTime}`,
-        `♥：${illust.total_bookmarks}  👁：${illust.total_view}`,
-        `tag：${tagsStr}`
+        "https://www.pixiv.net/artworks/" + illust.id + " (共" + illust.page_count + "P)",
+        "是否ai：" + (illust.illust_ai_type === 2 ? "是" : "否"),
+        "♥：" + illust.total_bookmarks + "  👁：" + illust.total_view,
+        "tag：" + tagsStr
     );
-
     const mainInfo = msg.join("\n");
 
-    // 【核心新增】：提取并清洗作品简介（将 HTML 换行转标准换行，剥离网页标签，并反转义 HTML 实体）
+    // === 3. 提取简介 ===
     let captionNode = "";
     if (illust.caption) {
         const cleanCaption = illust.caption
@@ -358,10 +370,10 @@ export function buildPixivMessage(illust, customPrefix = "") {
             .replace(/&#39;/g, "'")
             .trim();
         if (cleanCaption) {
-            captionNode = `【作品简介】\n${cleanCaption}`;
+            captionNode = "【作品简介】\n" + cleanCaption;
         }
     }
 
-    // 如果有简介则返回包含两个节点文本的数组，否则只返回主信息节点
-    return captionNode ? [mainInfo, captionNode] : [mainInfo];
+    // 返回结构：[0: 合并主信息(供正则抓PID), 1: 简介(可为空), 2: 单独外发信息]
+    return [ mainInfo, captionNode || "", extractedMsg ];
 }
