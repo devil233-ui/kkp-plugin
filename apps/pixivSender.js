@@ -70,11 +70,13 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
         isTextOnly = true;
 
         const privateQq = config.r18_private_qq;
-        if (privateQq && global.Bot?.pickFriend) {
-            // 【核心修复】：加上斜杠和下划线限定，精准锁定 PID，防止把 2026 年份给抓走！
-            const currentPid = originalUrls[0]?.match(/\/(\d+)_/)?.[1];
+            if (privateQq && global.Bot?.pickFriend) {
+                // 【终极修复】：直接从咱们自己构建的文案里提取 PID，彻底无视任何 API 的 URL 格式差异！
+                const currentPidMatch = initialMsg[0]?.match(/artworks\/(\d+)/);
+                const currentPid = currentPidMatch ? currentPidMatch[1] : null;
 
-            if (currentPid && !sentPrivatePids.has(currentPid)) {
+                // 如果老哥觉得测试同一张图不转发很烦，可以把 && !sentPrivatePids.has(currentPid) 删掉
+                if (currentPid && !sentPrivatePids.has(currentPid)) {
                 const privateTarget = global.Bot.pickFriend(Number(privateQq));
                 if (privateTarget) {
                     // 标记去重缓存
@@ -114,10 +116,6 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
     if (overflowMsg) mainParts.push(overflowMsg);
     // mainParts.push(`风控时请戳反代直链：\n${proxyUrlsDisplay.join("\n")}`);
 
-    // const isUgoira = originalUrls.some(url => url.includes("ugoira"));
-    // if (isUgoira) {
-    //     mainParts.push("[⚠️本作是Pixiv网页动图(Ugoira)，伊涅芙只能展示首帧封面，请前往原站查看]");
-    // }
     const isUgoira = originalUrls.some(url => url.includes("ugoira"));
     if (isUgoira) {
         mainParts.push("✨本作是Pixiv网页动图(Ugoira)，已调用外部专属服务为您实时渲染为 GIF");
@@ -231,29 +229,22 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
         }
     }
 
-    // 4. 常规图片智能分流（子弹单发模式）
+    // 4. 常规图片下发（带超时与风控记录）
     let normalImages = localFiles.filter(f => !pixelBombs.includes(f));
-    // 【核心修复 1】：废弃全量布尔值，改用数组精准记录阵亡名单
     let failedImages = [];
 
     if (normalImages.length > 0) {
-        // 第一轮：全量直发
         for (let i = 0; i < normalImages.length; i++) {
-            let res = await sendMsg(segment.image(`file://${normalImages[i]}`));
+            let res = await sendMsg(segment.image("file://" + normalImages[i]));
             if (!res || res.message_id === undefined) {
-                // 【核心修复 2】：哪张图死了，就把哪张图丢进伤员名单！
                 failedImages.push(normalImages[i]);
             }
             if (i < normalImages.length - 1) await new Promise(r => setTimeout(r, 1500));
         }
 
-        // 5. 针对性翻转兜底（仅抢救阵亡名单里的图）
+        // 5. 折叠兜底（将翻转后的图片与直链打包为合并转发，彻底解决误报与刷屏问题）
         if (failedImages.length > 0) {
-            let warnFlipRes = await sendMsg(`⚠️检测到 ${failedImages.length} 张图片被风控拦截，正在尝试竖直翻转重发...`);
-            if (warnFlipRes && warnFlipRes.message_id) warningMsgIds.push(warnFlipRes.message_id);
-
             let flippedImages = [];
-            // 【核心修复 3】：遍历的对象从 normalImages 换成了 failedImages，绝不误伤成功发出的图
             for (let i = 0; i < failedImages.length; i++) {
                 try {
                     const sourceFilePath = failedImages[i];
@@ -273,23 +264,37 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
             }
 
             if (flippedImages.length > 0) {
+                let forwardNodes = [];
+
+                // 节点1：顶部提示文案
+                forwardNodes.push({
+                    message: "⚠️检测到 " + failedImages.length + " 张图片被风控拦截（或网络超时），已尝试竖直翻转并折叠重发。",
+                    nickname: "防风控系统",
+                    user_id: 80000000
+                });
+
+                // 节点2~N：翻转图及备用直链
                 for (let i = 0; i < flippedImages.length; i++) {
-                    let res = await sendMsg(segment.image(`file://${flippedImages[i]}`));
-                    if (!res || !res.message_id) {
-                        // 【核心新增】：提取阵亡文件名的特征（如 145386381_p0），从顶部的直链池里精准捞出它专属的 URL
-                        let fileNameMatch = flippedImages[i].match(/(\d+_(?:p|ugoira)\d+)/);
-                        let deadProxyUrl = fileNameMatch ? proxyUrlsDisplay.find(u => u.includes(fileNameMatch[1])) : "";
+                    let fileNameMatch = flippedImages[i].match(/(\d+_(?:p|ugoira)\d+)/);
+                    let deadProxyUrl = fileNameMatch ? proxyUrlsDisplay.find(u => u.includes(fileNameMatch[1])) : "";
 
-                        let failText = deadProxyUrl
-                            ? `⚠️该图片风控阵亡，请戳专属反代直链查看：\n${deadProxyUrl}`
-                            : "⚠️翻转重发依然被拦截，该图片已彻底阵亡...";
-
-                        // 注意：只发消息，不再将 message_id 推入 warningMsgIds！
-                        // 确保这个带有直链的“阵亡通报”永久留在记录里，取代原图供你查阅！
-                        await sendMsg(failText);
+                    let nodeContent = [segment.image("file://" + flippedImages[i])];
+                    if (deadProxyUrl) {
+                        nodeContent.push("\n⚠️若图彻底阵亡，请戳备用的反代直链查看：\n" + deadProxyUrl);
                     }
-                    if (i < flippedImages.length - 1) await new Promise(r => setTimeout(r, 1500));
+
+                    forwardNodes.push({
+                        message: nodeContent,
+                        nickname: "防风控系统",
+                        user_id: 80000000
+                    });
                 }
+
+                // 以原生 Node 格式交由底层适配器发送合并转发消息
+                await sendMsg({
+                    type: "node",
+                    data: forwardNodes
+                });
             }
         }
     }
