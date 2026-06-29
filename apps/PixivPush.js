@@ -59,26 +59,25 @@ export class PixivPushPlugin extends plugin {
 
     async sendKKPImage(e) {
         const imagePath = "./plugins/kkp-plugin/config/kkp.jpg";
-        let msg = [ segment.image(`file://${imagePath}`) ];
+        let msg = [segment.image(`file://${imagePath}`)];
         await e.reply(msg);
         return true;
     }
 
     // ================= 订阅管理相关指令 =================
     async subscribeArtist(e) {
-        if (!e.isGroup) return;
-        const groupId = e.group_id.toString();
+        const targetId = (e.isGroup ? e.group_id : e.user_id).toString();
         const data = this.loadData();
 
-        if (!data[groupId]) data[groupId] = { "pushEnabled": false, "artists": {} };
-        if (Object.keys(data).length > 5) return e.reply("已达到群订阅上限！");
-        if (Object.keys(data[groupId].artists).length >= 500) return e.reply("该群已达到画师订阅上限！");
+        if (!data[targetId]) data[targetId] = { "pushEnabled": false, "artists": {} };
+        if (Object.keys(data).length > 5) return e.reply("已达到订阅上限！");
+        if (Object.keys(data[targetId].artists).length >= 500) return e.reply("已达到画师订阅上限！");
 
         const matches = e.msg.trim().match(/^#?订阅画师(\d+)$/);
         const artistId = matches ? matches[1] : null;
         if (!artistId) return;
 
-        if (data[groupId].artists[artistId]) {
+        if (data[targetId].artists[artistId]) {
             await e.reply(`已经订阅了 ${artistId}`);
             return;
         }
@@ -87,7 +86,7 @@ export class PixivPushPlugin extends plugin {
         let artistName = "";
         try {
             const headers = await getAppApiHeaders();
-            const res = await fetch(`https://app-api.pixiv.net/v1/user/illusts?user_id=${artistId}&type=illust`,  { headers, timeout: 10000 });
+            const res = await fetch(`https://app-api.pixiv.net/v1/user/illusts?user_id=${artistId}&type=illust`, { headers, timeout: 10000 });
             const resData = await res.json();
             if (!resData.illusts) {
                 await e.reply(`获取画师 ${artistId} 信息失败，请检查 ID 是否正确。`);
@@ -100,54 +99,51 @@ export class PixivPushPlugin extends plugin {
             return;
         }
 
-        // 保存到 yaml
-        data[groupId].artists[artistId] = artistName;
-        data[groupId].pushEnabled = true; // 订阅时默认开启推送
+        data[targetId].artists[artistId] = artistName;
+        data[targetId].pushEnabled = true;
         this.saveData(data);
 
         if (latestId > 0) {
-            await redis.hSet(`kkp:pixiv:progress:${groupId}`, artistId, latestId);
+            await redis.hSet(`kkp:pixiv:progress:${targetId}`, artistId, latestId);
         } else {
-            await redis.hSet(`kkp:pixiv:progress:${groupId}`, artistId, 1);
+            await redis.hSet(`kkp:pixiv:progress:${targetId}`, artistId, 1);
         }
 
         await e.reply(`成功订阅画师 ${artistId} (${artistName})，已同步设置推送基准线。`);
     }
 
     async unsubscribeArtist(e) {
-        if (!e.isGroup) return;
-        const groupId = e.group_id.toString();
+        const targetId = (e.isGroup ? e.group_id : e.user_id).toString();
         const data = this.loadData();
-        if (!data[groupId]) return;
+        if (!data[targetId]) return;
 
         const matches = e.msg.trim().match(/^#?(取消订阅|删画师)(\d+)$/);
         const artistId = matches ? matches[2] : null;
         if (!artistId) return;
 
-        if (!data[groupId].artists[artistId]) {
+        if (!data[targetId].artists[artistId]) {
             await e.reply(`还未订阅 ${artistId} 哦`);
             return;
         }
 
-        const artistName = data[groupId].artists[artistId];
-        delete data[groupId].artists[artistId];
+        const artistName = data[targetId].artists[artistId];
+        delete data[targetId].artists[artistId];
         this.saveData(data);
 
-        const redisKey = `kkp:pixiv:progress:${groupId}`;
+        const redisKey = `kkp:pixiv:progress:${targetId}`;
         await redis.hDel(redisKey, artistId);
 
-        logger.mark(`[kkp-plugin] 群 ${groupId} 取消订阅画师 ${artistId}，相关 Redis 记录已清理`);
+        logger.mark(`[kkp-plugin] 目标 ${targetId} 取消订阅画师 ${artistId}，相关 Redis 记录已清理`);
         await e.reply(`已成功取消订阅画师：${artistName} (${artistId})`);
     }
 
     async importFollowing(e) {
-        if (!e.isGroup) return;
-        const groupId = e.group_id.toString();
+        const targetId = (e.isGroup ? e.group_id : e.user_id).toString();
         const matches = e.msg.trim().match(/^#?导入关注(列表)?(\d+)$/);
         const targetUid = matches[2];
 
         let data = this.loadData();
-        if (!data[groupId]) data[groupId] = { "pushEnabled": true, "artists": {}, "tags": { "whitelist": [], "blacklist": [] } };
+        if (!data[targetId]) data[targetId] = { "pushEnabled": true, "artists": {}, "tags": { "whitelist": [], "blacklist": [] } };
 
         const headers = await getAppApiHeaders();
 
@@ -158,7 +154,7 @@ export class PixivPushPlugin extends plugin {
             let newArtists = [];
 
             while (url) {
-                const res = await fetch(url, {headers});
+                const res = await fetch(url, { headers });
                 const resData = await res.json();
 
                 if (!resData.user_previews) {
@@ -170,7 +166,7 @@ export class PixivPushPlugin extends plugin {
                     const artistId = preview.user.id.toString();
                     const artistName = preview.user.name;
 
-                    if (!data[groupId].artists[artistId]) {
+                    if (!data[targetId].artists[artistId]) {
                         newArtists.push({ id: artistId, name: artistName });
                     }
                 }
@@ -187,16 +183,17 @@ export class PixivPushPlugin extends plugin {
             for (let artist of newArtists) {
                 try {
                     const illustUrl = `https://app-api.pixiv.net/v1/user/illusts?user_id=${artist.id}&type=illust`;
-                    const illustRes = await fetch(illustUrl, { headers: this.getAppHeaders(tokenResult.token) });
+                    // 【核心修复】：原代码调用的 this.getAppHeaders(token) 根本不存在，已改为直调 headers
+                    const illustRes = await fetch(illustUrl, { headers });
                     const illustData = await illustRes.json();
 
-                    data[groupId].artists[artist.id] = artist.name;
+                    data[targetId].artists[artist.id] = artist.name;
 
                     if (illustData.illusts && illustData.illusts.length > 0) {
                         const maxId = illustData.illusts[0].id;
-                        await redis.hSet(`kkp:pixiv:progress:${groupId}`, artist.id, maxId);
+                        await redis.hSet(`kkp:pixiv:progress:${targetId}`, artist.id, maxId);
                     } else {
-                        await redis.hSet(`kkp:pixiv:progress:${groupId}`, artist.id, 1);
+                        await redis.hSet(`kkp:pixiv:progress:${targetId}`, artist.id, 1);
                     }
                     successCount++;
                 } catch (err) {
@@ -214,35 +211,34 @@ export class PixivPushPlugin extends plugin {
     }
 
     async listSubscribedArtists(e) {
-        if (!e.isGroup) return;
-        const groupId = e.group_id.toString();
+        const targetId = (e.isGroup ? e.group_id : e.user_id).toString();
         const data = this.loadData();
 
-        if (!data[groupId] || Object.keys(data[groupId].artists).length === 0) {
+        if (!data[targetId] || Object.keys(data[targetId].artists).length === 0) {
             await e.reply("当前没有订阅任何画师");
             return;
         }
 
-        let response = `群 [${groupId}] 订阅列表：\n`;
-        response += `推送状态：${data[groupId].pushEnabled ? "✅已开启" : "❌已关闭"}\n`;
+        let response = `${e.isGroup ? "群" : "私聊"} [${targetId}] 订阅列表：\n`;
+        response += `推送状态：${data[targetId].pushEnabled ? "✅已开启" : "❌已关闭"}\n`;
 
-        const groupTags = data[groupId].tags || { "whitelist": [], "blacklist": [] };
+        const groupTags = data[targetId].tags || { "whitelist": [], "blacklist": [] };
         if (groupTags.whitelist && groupTags.whitelist.length > 0) response += `白名单：${groupTags.whitelist.join(", ")}\n`;
         if (groupTags.blacklist && groupTags.blacklist.length > 0) response += `黑名单：${groupTags.blacklist.join(", ")}\n`;
         response += "\n";
-        for (const [ artistId, artistName ] of Object.entries(data[groupId].artists)) {
+        for (const [artistId, artistName] of Object.entries(data[targetId].artists)) {
             response += `${artistName}  ${artistId}\n`;
         }
         await e.reply(response);
     }
 
     async enablePush(e) {
-        const groupId = e.group_id.toString();
+        const targetId = (e.isGroup ? e.group_id : e.user_id).toString();
         let data = this.loadData();
-        if (!data[groupId]) data[groupId] = { "pushEnabled": false, "artists": {} };
+        if (!data[targetId]) data[targetId] = { "pushEnabled": false, "artists": {} };
 
-        if (!data[groupId].pushEnabled) {
-            data[groupId].pushEnabled = true;
+        if (!data[targetId].pushEnabled) {
+            data[targetId].pushEnabled = true;
             this.saveData(data);
             await e.reply("已开启p推送。");
         } else {
@@ -251,12 +247,12 @@ export class PixivPushPlugin extends plugin {
     }
 
     async disablePush(e) {
-        const groupId = e.group_id.toString();
+        const targetId = (e.isGroup ? e.group_id : e.user_id).toString();
         let data = this.loadData();
-        if (!data[groupId]) return;
+        if (!data[targetId]) return;
 
-        if (data[groupId].pushEnabled) {
-            data[groupId].pushEnabled = false;
+        if (data[targetId].pushEnabled) {
+            data[targetId].pushEnabled = false;
             this.saveData(data);
             await e.reply("已关闭p推送。");
         } else {
@@ -265,12 +261,11 @@ export class PixivPushPlugin extends plugin {
     }
 
     async manageTags(e) {
-        if (!e.isGroup) return;
-        const groupId = e.group_id.toString();
+        const targetId = (e.isGroup ? e.group_id : e.user_id).toString();
         let data = this.loadData();
 
-        if (!data[groupId]) data[groupId] = { "pushEnabled": false, "artists": {} };
-        if (!data[groupId].tags) data[groupId].tags = { "whitelist": [], "blacklist": [] };
+        if (!data[targetId]) data[targetId] = { "pushEnabled": false, "artists": {} };
+        if (!data[targetId].tags) data[targetId].tags = { "whitelist": [], "blacklist": [] };
 
         const match = e.msg.trim().match(/^#?(添加|删除)(白|黑)名单标签(.+)$/);
         if (!match) return;
@@ -280,16 +275,16 @@ export class PixivPushPlugin extends plugin {
         const tag = match[3].trim();
         const typeName = match[2] + "名单";
 
-        let targetList = data[groupId].tags[type];
+        let targetList = data[targetId].tags[type];
 
         if (action === "添加") {
-            if (targetList.includes(tag)) return e.reply(`该群${typeName}中已存在标签：${tag}`);
+            if (targetList.includes(tag)) return e.reply(`当前${typeName}中已存在标签：${tag}`);
             targetList.push(tag);
             this.saveData(data);
             await e.reply(`成功添加${typeName}标签：${tag}`);
         } else {
             const index = targetList.indexOf(tag);
-            if (index === -1) return e.reply(`该群${typeName}中没有标签：${tag}`);
+            if (index === -1) return e.reply(`当前${typeName}中没有标签：${tag}`);
             targetList.splice(index, 1);
             this.saveData(data);
             await e.reply(`成功移除${typeName}标签：${tag}`);
@@ -299,7 +294,8 @@ export class PixivPushPlugin extends plugin {
     // ================= 自动推送核心 =================
     async forcePush(e) {
         await e.reply("正在检查订阅更新...");
-        const result = await this.executePushLogic(true, e.group_id.toString());
+        const targetId = (e.isGroup ? e.group_id : e.user_id).toString();
+        const result = await this.executePushLogic(true, targetId);
 
         if (result.state === "empty") {
             await e.reply("检查完毕：订阅的画师暂无更新。");
@@ -372,7 +368,7 @@ export class PixivPushPlugin extends plugin {
                             // 【核心修复：防 YAML 偷渡客的静默初始化】
                             // 没有进度的一律只记进度不发图！彻底超度冗余的回溯逻辑！
                             await redis.hSet(redisKey, artistId, maxId);
-                            logger.mark(`[kkp-plugin] 检测到群 ${groupId} 手动添加了画师 ${artistId}，已静默初始化基准线为 ${maxId}`);
+                            logger.mark(`[kkp-plugin] 检测到目标 ${groupId} 手动添加了画师 ${artistId}，已静默初始化基准线为 ${maxId}`);
                         } else if (maxId > storedMax) {
                             needsUpdateGroups.push(groupId);
                             if (storedMax < globalStoredMax) globalStoredMax = storedMax;
@@ -388,7 +384,7 @@ export class PixivPushPlugin extends plugin {
                     let targetIllusts = latestIllusts.filter(ill => ill.id > globalStoredMax).reverse().slice(-3);
 
                     for (let illust of targetIllusts) {
-                        const illustTags = illust.tags.flatMap(t => [ t.name, t.translated_name ]).filter(Boolean);
+                        const illustTags = illust.tags.flatMap(t => [t.name, t.translated_name]).filter(Boolean);
                         let validGroups = [];
 
                         for (let gid of needsUpdateGroups) {
@@ -403,7 +399,7 @@ export class PixivPushPlugin extends plugin {
                             // 去掉 slice，把全量图片直接全取出来
                             targetImgUrls = illust.meta_pages.map(p => p.image_urls.original);
                         } else if (illust.meta_single_page && illust.meta_single_page.original_image_url) {
-                            targetImgUrls = [ illust.meta_single_page.original_image_url ];
+                            targetImgUrls = [illust.meta_single_page.original_image_url];
                         }
 
                         // 只有当有群需要接收这张图时，才去拼文案和发图
@@ -420,18 +416,19 @@ export class PixivPushPlugin extends plugin {
 
                             let sendSuccessGroups = [];
                             for (let gid of validGroups) {
-                                const group = Bot.pickGroup(Number(gid));
-                                if (!group) continue;
+                                // 【核心修复】：智能识别目标是群聊还是私聊，彻底解决私聊无响应问题
+                                let target = global.Bot.gl && global.Bot.gl.has(Number(gid))
+                                    ? global.Bot.pickGroup(Number(gid))
+                                    : global.Bot.pickFriend(Number(gid));
 
-                                // 【核心逻辑】：将 config.yaml 的全局配置与群独立撤回配置完美缝合！
+                                if (!target) continue;
+
                                 let sendConfig = {
-                                    ...pluginConfig, // 垫底：包含 max_images=40, 全局 recall 等
-                                    ...(data[gid]?.recallConfig || {}) // 覆盖：如果群有独立撤回设置，则覆盖全局
+                                    ...pluginConfig,
+                                    ...(data[gid]?.recallConfig || {})
                                 };
 
-                                // 将组装好的 sendConfig 传给引擎，引擎会自动根据里面的 max_images 进行截断并发出警告！
-                                // 【核心修复】：去掉了 [ infoMsg ] 外层多余的中括号，防止二维数组引发引擎崩溃！
-                                const isSuccess = await sendPixivImageWithFallback(group, infoMsg, targetImgUrls, sendConfig);
+                                const isSuccess = await sendPixivImageWithFallback(target, infoMsg, targetImgUrls, sendConfig);
 
                                 if (isSuccess) sendSuccessGroups.push(gid);
 
@@ -472,7 +469,7 @@ export class PixivPushPlugin extends plugin {
 }
 
 // ================= 定时任务 =================
-schedule.scheduleJob("0 */2 * * *", async() => {
+schedule.scheduleJob("0 */2 * * *", async () => {
     const randomDelay = Math.floor(Math.random() * 60 * 60 * 1000);
     setTimeout(() => {
         logger.mark("[kkp-plugin] 触发定时自动画师推送检查");
