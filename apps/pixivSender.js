@@ -15,15 +15,15 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
     const maxImages = config.max_images || 40;
 
     // 基础消息与撤回 API
-    const sendMsg = async(msg) => isEvent ? await target.reply(msg).catch(() => null) : await target.sendMsg(msg).catch(() => null);
-    const makeForwardMsg = async(nodes) => {
+    const sendMsg = async (msg) => isEvent ? await target.reply(msg).catch(() => null) : await target.sendMsg(msg).catch(() => null);
+    const makeForwardMsg = async (nodes) => {
         try {
             if (isEvent) return target.isGroup ? await target.group.makeForwardMsg(nodes) : await target.friend.makeForwardMsg(nodes);
             if (target.makeForwardMsg) return await target.makeForwardMsg(nodes);
             if (global.Bot?.makeForwardMsg) return await global.Bot.makeForwardMsg(nodes);
             return nodes.map(n => ({
                 type: "node",
-                data: { name: String(n.nickname), uin: String(n.user_id), content: Array.isArray(n.message) ? n.message : [ n.message ] }
+                data: { name: String(n.nickname), uin: String(n.user_id), content: Array.isArray(n.message) ? n.message : [n.message] }
             }));
         } catch (err) { return null; }
     };
@@ -34,7 +34,7 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
         } catch (e) { }
     };
 
-    const sendFileMsg = async(filePath) => {
+    const sendFileMsg = async (filePath) => {
         try {
             if (isEvent) {
                 if (target.isGroup && target.group?.sendFile) await target.group.sendFile(filePath);
@@ -70,13 +70,13 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
         isTextOnly = true;
 
         const privateQq = config.r18_private_qq;
-            if (privateQq && global.Bot?.pickFriend) {
-                // 【终极修复】：直接从咱们自己构建的文案里提取 PID，彻底无视任何 API 的 URL 格式差异！
-                const currentPidMatch = initialMsg[0]?.match(/artworks\/(\d+)/);
-                const currentPid = currentPidMatch ? currentPidMatch[1] : null;
+        if (privateQq && global.Bot?.pickFriend) {
+            // 【终极修复】：直接从咱们自己构建的文案里提取 PID，彻底无视任何 API 的 URL 格式差异！
+            const currentPidMatch = initialMsg[0]?.match(/artworks\/(\d+)/);
+            const currentPid = currentPidMatch ? currentPidMatch[1] : null;
 
-                // 如果老哥觉得测试同一张图不转发很烦，可以把 && !sentPrivatePids.has(currentPid) 删掉
-                if (currentPid && !sentPrivatePids.has(currentPid)) {
+            // 如果老哥觉得测试同一张图不转发很烦，可以把 && !sentPrivatePids.has(currentPid) 删掉
+            if (currentPid && !sentPrivatePids.has(currentPid)) {
                 const privateTarget = global.Bot.pickFriend(Number(privateQq));
                 if (privateTarget) {
                     // 标记去重缓存
@@ -116,7 +116,7 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
     }
 
     let forwardNodes = [];
-    let mainParts = [ initialMsg[0] ];
+    let mainParts = [initialMsg[0]];
 
     if (overflowMsg) mainParts.push(overflowMsg);
     // mainParts.push(`风控时请戳反代直链：\n${proxyUrlsDisplay.join("\n")}`);
@@ -126,16 +126,16 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
         mainParts.push("✨本作是Pixiv网页动图(Ugoira)，已调用外部专属服务为您实时渲染为 GIF");
     }
 
-    forwardNodes.push(makeNode([ mainParts.join("\n\n") ]));
+    forwardNodes.push(makeNode([mainParts.join("\n\n")]));
 
     if (initialMsg[1]) {
-        forwardNodes.push(makeNode([ initialMsg[1] ]));
+        forwardNodes.push(makeNode([initialMsg[1]]));
     }
 
     let textForward = await makeForwardMsg(forwardNodes);
     let fallbackText = initialMsg[1] ? `${mainParts.join("\n\n")}\n\n${initialMsg[1]}` : mainParts.join("\n\n");
     // 主体文案发送后，不加入撤回列表！稳稳留在记录里！
-    await sendMsg(textForward || [ fallbackText ]);
+    await sendMsg(textForward || [fallbackText]);
 
     if (isTextOnly) {
         return true;
@@ -186,7 +186,8 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
                         continue; // GIF 渲染成功，直接跳过后面的普通下载逻辑！
                     }
                 } catch (apiErr) {
-                    let failWarn = await sendMsg("⚠️云端 GIF 渲染超时或失败，已自动降级为您下载高清静态首帧图...");
+                    const errDetail = apiErr.message || apiErr.code || String(apiErr);
+                    let failWarn = await sendMsg(`⚠️云端GIF渲染失败（${errDetail}），已自动降级为您下载高清静态首帧图...`);
                     if (failWarn && failWarn.message_id) warningMsgIds.push(failWarn.message_id);
                 }
             }
@@ -283,7 +284,7 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
                     let fileNameMatch = flippedImages[i].match(/(\d+_(?:p|ugoira)\d+)/);
                     let deadProxyUrl = fileNameMatch ? proxyUrlsDisplay.find(u => u.includes(fileNameMatch[1])) : "";
 
-                    let nodeContent = [ segment.image("file://" + flippedImages[i]) ];
+                    let nodeContent = [segment.image("file://" + flippedImages[i])];
                     if (deadProxyUrl) {
                         nodeContent.push("\n⚠️若图彻底阵亡，请戳备用的反代直链查看：\n" + deadProxyUrl);
                     }
@@ -375,5 +376,5 @@ export function buildPixivMessage(illust, customPrefix = "") {
     }
 
     // 返回结构：[0: 合并主信息(供正则抓PID), 1: 简介(可为空), 2: 单独外发信息]
-    return [ mainInfo, captionNode || "", extractedMsg ];
+    return [mainInfo, captionNode || "", extractedMsg];
 }
