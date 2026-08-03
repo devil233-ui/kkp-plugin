@@ -1,4 +1,5 @@
 import fs from "node:fs"
+import plugin from "../../lib/plugins/plugin.js"
 
 const files = fs.readdirSync("./plugins/kkp-plugin/apps").filter(file => file.endsWith(".js"))
 
@@ -23,6 +24,15 @@ for (let i in files) {
     logger.error(ret[i].reason)
     continue
   }
-  apps[name] = ret[i].value[Object.keys(ret[i].value)[0]]
+  const App = Object.values(ret[i].value).find(
+    exported => typeof exported === "function" && exported.prototype instanceof plugin
+  )
+
+  if (!App) {
+    logger.debug?.("跳过辅助模块：" + name)
+    continue
+  }
+
+  apps[name] = App
 }
 export { apps }
