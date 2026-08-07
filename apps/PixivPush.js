@@ -6,7 +6,31 @@ import YAML from "yaml";
 import fs from "fs";
 import path from "path";
 import { sendPixivImageWithFallback, buildPixivMessage } from "./pixivSender.js";
-import { getAppApiHeaders } from "./pixivAuth.js";
+import { getAppApiHeaders, isPixivTokenActionRequired } from "./pixivAuth.js";
+import { keyValue } from "../config/api.js";
+
+const TOKEN_NOTICE_COOLDOWN = 6 * 60 * 60 * 1000;
+let lastTokenNoticeAt = 0;
+
+async function notifyMasterAboutToken(error) {
+    const now = Date.now();
+    if (now - lastTokenNoticeAt < TOKEN_NOTICE_COOLDOWN) return;
+
+    const masterQQ = Number(keyValue);
+    if (!Number.isSafeInteger(masterQQ) || !global.Bot?.pickFriend) {
+        logger.error("[kkp-plugin] 无法发送Token失效通知：未找到主人QQ或私聊适配器");
+        return;
+    }
+
+    lastTokenNoticeAt = now;
+    try {
+        const target = global.Bot.pickFriend(masterQQ);
+        await target.sendMsg(`⚠️[kkp-plugin] ${error.message}\n更换后无需重启，下一次请求会自动使用新Token。`);
+    } catch (notifyError) {
+        lastTokenNoticeAt = 0;
+        logger.error(`[kkp-plugin] Token失效通知发送失败：${notifyError.message}`);
+    }
+}
 
 export class PixivPushPlugin extends plugin {
     constructor() {
@@ -59,7 +83,7 @@ export class PixivPushPlugin extends plugin {
 
     async sendKKPImage(e) {
         const imagePath = "./plugins/kkp-plugin/config/kkp.jpg";
-        let msg = [segment.image(`file://${imagePath}`)];
+        let msg = [ segment.image(`file://${imagePath}`) ];
         await e.reply(msg);
         return true;
     }
@@ -226,7 +250,7 @@ export class PixivPushPlugin extends plugin {
         if (groupTags.whitelist && groupTags.whitelist.length > 0) response += `白名单：${groupTags.whitelist.join(", ")}\n`;
         if (groupTags.blacklist && groupTags.blacklist.length > 0) response += `黑名单：${groupTags.blacklist.join(", ")}\n`;
         response += "\n";
-        for (const [artistId, artistName] of Object.entries(data[targetId].artists)) {
+        for (const [ artistId, artistName ] of Object.entries(data[targetId].artists)) {
             response += `${artistName}  ${artistId}\n`;
         }
         await e.reply(response);
@@ -384,7 +408,7 @@ export class PixivPushPlugin extends plugin {
                     let targetIllusts = latestIllusts.filter(ill => ill.id > globalStoredMax).reverse().slice(-3);
 
                     for (let illust of targetIllusts) {
-                        const illustTags = illust.tags.flatMap(t => [t.name, t.translated_name]).filter(Boolean);
+                        const illustTags = illust.tags.flatMap(t => [ t.name, t.translated_name ]).filter(Boolean);
                         let validGroups = [];
 
                         for (let gid of needsUpdateGroups) {
@@ -399,7 +423,7 @@ export class PixivPushPlugin extends plugin {
                             // 去掉 slice，把全量图片直接全取出来
                             targetImgUrls = illust.meta_pages.map(p => p.image_urls.original);
                         } else if (illust.meta_single_page && illust.meta_single_page.original_image_url) {
-                            targetImgUrls = [illust.meta_single_page.original_image_url];
+                            targetImgUrls = [ illust.meta_single_page.original_image_url ];
                         }
 
                         // 只有当有群需要接收这张图时，才去拼文案和发图
@@ -462,14 +486,19 @@ export class PixivPushPlugin extends plugin {
             return { state: hasUpdates ? "success" : "empty" };
 
         } catch (error) {
-            logger.error(`[kkp-plugin] 顶层推送逻辑崩溃: ${error.stack}`);
+            if (isPixivTokenActionRequired(error)) {
+                logger.error(`[kkp-plugin] ${error.message}`);
+                await notifyMasterAboutToken(error);
+            } else {
+                logger.error(`[kkp-plugin] 顶层推送逻辑崩溃: ${error.stack}`);
+            }
             return { state: "error", reason: error.message };
         }
     }
 }
 
 // ================= 定时任务 =================
-schedule.scheduleJob("0 */2 * * *", async () => {
+schedule.scheduleJob("0 */2 * * *", async() => {
     const randomDelay = Math.floor(Math.random() * 60 * 60 * 1000);
     setTimeout(() => {
         logger.mark("[kkp-plugin] 触发定时自动画师推送检查");
