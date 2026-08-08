@@ -22,7 +22,8 @@ export class Update extends plugin {
             rule: [
                 {
                     reg: "^#*(kkp|kkp)(插件)?(强制)?更新$",
-                    fnc: "update"
+                    fnc: "update",
+                    permission: "master"
                 }
             ]
         })
@@ -32,6 +33,8 @@ export class Update extends plugin {
      * @returns
      */
     async update() {
+        if (!this.e?.isMaster) return false
+
         /** 检查是否正在更新中 */
         if (uping) {
             await this.reply("已有命令更新中..请勿重复操作")

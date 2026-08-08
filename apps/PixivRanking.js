@@ -5,8 +5,11 @@ import YAML from "yaml";
 import { pid, dailyRanking } from "../config/api.js";
 import { execFile } from "child_process";
 import path from "path";
+import { cleanupExpiredTempDirs, createRequestTempDir } from "./tempFiles.js";
 
 const pythonCommand = process.platform === "win32" ? "python" : "python3";
+const RANKING_TEMP_PREFIX = "kkp-ranking-";
+cleanupExpiredTempDirs(RANKING_TEMP_PREFIX);
 
 export class DailyRankImageFetcher extends plugin {
     constructor() {
@@ -87,30 +90,16 @@ export class DailyRankImageFetcher extends plugin {
         });
     }
 
-    deleteTempFiles() {
-        const tempDir = path.resolve("./plugins/kkp-plugin/temp");
-        fs.readdir(tempDir, (err, files) => {
-            if (err) {
-                console.error("读取temp目录失败：", err);
-                return;
-            }
-
-            files.forEach(file => {
-                const filePath = path.join(tempDir, file);
-                fs.unlink(filePath, err => {
-                    if (err) {
-                        console.error(`删除文件失败：${filePath}`, err);
-                    }
-                });
-            });
-        });
+    async _processDailyRank(e) {
+        const tempDir = createRequestTempDir(RANKING_TEMP_PREFIX);
+        try {
+            return await this.processDailyRank(e, tempDir);
+        } finally {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+        }
     }
 
-    async _processDailyRank(e) {
-        const tempDir = "./plugins/kkp-plugin/temp";
-        if (!fs.existsSync(tempDir)) {
-            fs.mkdirSync(tempDir, { recursive: true });
-        }
+    async processDailyRank(e, tempDir) {
         const match = e.msg.match(this.rule.find(rule => e.msg.match(rule.reg)).reg);
         const numStr = match[1];
         const num = numStr ? Math.min(parseInt(numStr), 30) : 10;
@@ -128,7 +117,7 @@ export class DailyRankImageFetcher extends plugin {
 
         await e.reply("图片获取完毕，正在发送中...");
 
-        const imageMessages = await Promise.all(detailsList.map(async(details, index) => {
+        const imageMessageResults = await Promise.allSettled(detailsList.map(async(details, index) => {
             if (details && details.body) {
                 const imageUrls = [ details.body.urls.regular || Object.values(details.body.urls)[0] ];
                 const tagList = details.body.tags.tags.map(tagObj => tagObj.tag);
@@ -141,7 +130,7 @@ export class DailyRankImageFetcher extends plugin {
                 const validImageDatas = imageDatas.filter(data => data !== null);
 
                 const modifiedImagePaths = await Promise.all(validImageDatas.map(async(imageData, i) => {
-                    const imagePath = `./plugins/kkp-plugin/temp/temp_image_${index}_${i}.jpg`;
+                    const imagePath = path.join(tempDir, `temp_image_${index}_${i}.jpg`);
                     fs.writeFileSync(imagePath, imageData);
                     const modifiedImagePath = await this.modifyImageWithPython(imagePath);
                     return modifiedImagePath;
@@ -169,7 +158,14 @@ export class DailyRankImageFetcher extends plugin {
             return null;
         }));
 
-        const validImageMessages = imageMessages.filter(msg => msg !== null);
+        for (const result of imageMessageResults) {
+            if (result.status === "rejected") {
+                logger.error(`[kkp-plugin] 每日排行图片处理失败：${result.reason?.message || result.reason}`);
+            }
+        }
+        const validImageMessages = imageMessageResults
+            .filter(result => result.status === "fulfilled" && result.value !== null)
+            .map(result => result.value);
 
         if (validImageMessages.length > 0) {
             const forwardMsg = e.isGroup
@@ -187,8 +183,6 @@ export class DailyRankImageFetcher extends plugin {
                         : e.friend.recallMsg(sentMessage.message_id);
                 }, recallConfig.time);
             }
-
-            this.deleteTempFiles();
         }
     }
 }

@@ -3,10 +3,14 @@ import axios from "axios";
 import fs from "fs";
 import YAML from "yaml";
 import { execFile } from "child_process";
+import path from "path";
 import { promisify } from "util";
+import { cleanupExpiredTempDirs, createRequestTempDir } from "./tempFiles.js";
 
 const execFileAsync = promisify(execFile);
 const pythonCommand = process.platform === "win32" ? "python" : "python3";
+const COS_TEMP_PREFIX = "kkp-cos-";
+cleanupExpiredTempDirs(COS_TEMP_PREFIX);
 
 export class CosImageFetcher extends plugin {
     constructor() {
@@ -48,24 +52,13 @@ export class CosImageFetcher extends plugin {
         }
     }
 
-    async modifyImageWithPython(imageBuffer, imageName) {
-        const tempImagePath = `./plugins/kkp-plugin/temp/temp_${imageName}.jpg`;
+    async modifyImageWithPython(imageBuffer, imageName, tempDir) {
+        const tempImagePath = path.join(tempDir, `temp_${imageName}.jpg`);
 
         fs.writeFileSync(tempImagePath, imageBuffer);
 
-        try {
-            const { stdout } = await execFileAsync(pythonCommand, [ "./plugins/kkp-plugin/modify_image.py", tempImagePath ]);
-            const modifiedImagePath = stdout.trim();
-            const modifiedImageBuffer = fs.readFileSync(modifiedImagePath);
-
-            fs.unlinkSync(tempImagePath);
-            fs.unlinkSync(modifiedImagePath);
-
-            return modifiedImageBuffer;
-        } catch (error) {
-            fs.unlinkSync(tempImagePath);
-            throw error;
-        }
+        const { stdout } = await execFileAsync(pythonCommand, [ "./plugins/kkp-plugin/modify_image.py", tempImagePath ]);
+        return fs.readFileSync(stdout.trim());
     }
 
     async process2Images(e) {
@@ -79,6 +72,7 @@ export class CosImageFetcher extends plugin {
     }
 
     async sendImages(e, url) {
+        const tempDir = createRequestTempDir(COS_TEMP_PREFIX);
         let promises = [];
         for (let i = 0; i < 10; i++) {
             promises.push(this.fetchImage(url));
@@ -87,11 +81,14 @@ export class CosImageFetcher extends plugin {
         try {
             let imageBuffers = await Promise.all(promises);
 
-            let modifiedImagesPromises = imageBuffers.filter(Boolean).map((imageBuffer, index) => 
-                this.modifyImageWithPython(imageBuffer, `image_${index}`)
+            let modifiedImagesPromises = imageBuffers.filter(Boolean).map((imageBuffer, index) =>
+                this.modifyImageWithPython(imageBuffer, `image_${index}`, tempDir)
             );
 
-            let modifiedImages = await Promise.all(modifiedImagesPromises);
+            const modifiedImageResults = await Promise.allSettled(modifiedImagesPromises);
+            const failedResult = modifiedImageResults.find(result => result.status === "rejected");
+            if (failedResult) throw failedResult.reason;
+            let modifiedImages = modifiedImageResults.map(result => result.value);
 
             let msgList = modifiedImages.map((modifiedImage, index) => ({
                 message: [ `涩批还看 ${index + 1}`, "\n", segment.image(`base64://${modifiedImage.toString("base64")}`) ],
@@ -121,6 +118,8 @@ export class CosImageFetcher extends plugin {
         } catch (error) {
             console.error(`Error processing images: ${error}`);
             await e.reply(`发生错误：${error.toString()}`);
+        } finally {
+            fs.rmSync(tempDir, { recursive: true, force: true });
         }
     }
 }

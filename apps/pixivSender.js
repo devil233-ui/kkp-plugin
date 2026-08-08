@@ -2,9 +2,14 @@ import axios from "axios";
 import fs from "fs";
 import path from "path";
 import { FlipImage } from "./flip.js";
+import { cleanupExpiredTempDirs, createRequestTempDir } from "./tempFiles.js";
+import { validateUgoiraApiUrl } from "./ugoiraEndpoint.js";
 import { pximgProxy } from "../config/api.js";
 const sentPrivatePids = new Set();
 import { getAppApiHeaders } from "./pixivAuth.js";
+
+const PIXIV_TEMP_PREFIX = "kkp-pixiv-";
+cleanupExpiredTempDirs(PIXIV_TEMP_PREFIX);
 
 // 注意第4个参数统一改名为 config，内部解构提取
 export async function sendPixivImageWithFallback(target, initialMsg, originalUrls, config = {}) {
@@ -15,15 +20,19 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
     const maxImages = config.max_images || 40;
 
     // 基础消息与撤回 API
-    const sendMsg = async (msg) => isEvent ? await target.reply(msg).catch(() => null) : await target.sendMsg(msg).catch(() => null);
-    const makeForwardMsg = async (nodes) => {
+    const sendMsg = async(msg) => isEvent ? await target.reply(msg).catch(() => null) : await target.sendMsg(msg).catch(() => null);
+    const isMessageSent = (result) => (
+        result !== null && result !== undefined && result !== false &&
+        (typeof result !== "object" || result.message_id !== undefined)
+    );
+    const makeForwardMsg = async(nodes) => {
         try {
             if (isEvent) return target.isGroup ? await target.group.makeForwardMsg(nodes) : await target.friend.makeForwardMsg(nodes);
             if (target.makeForwardMsg) return await target.makeForwardMsg(nodes);
             if (global.Bot?.makeForwardMsg) return await global.Bot.makeForwardMsg(nodes);
             return nodes.map(n => ({
                 type: "node",
-                data: { name: String(n.nickname), uin: String(n.user_id), content: Array.isArray(n.message) ? n.message : [n.message] }
+                data: { name: String(n.nickname), uin: String(n.user_id), content: Array.isArray(n.message) ? n.message : [ n.message ] }
             }));
         } catch (err) { return null; }
     };
@@ -34,23 +43,43 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
         } catch (e) { }
     };
 
-    const sendFileMsg = async (filePath) => {
+    const sendFileMsg = async(filePath) => {
         try {
             if (isEvent) {
-                if (target.isGroup && target.group?.sendFile) await target.group.sendFile(filePath);
-                else if (!target.isGroup && target.friend?.sendFile) await target.friend.sendFile(filePath);
-            } else {
-                if (target.sendFile) await target.sendFile(filePath);
+                if (target.isGroup && target.group?.sendFile) {
+                    await target.group.sendFile(filePath);
+                    return true;
+                }
+                if (!target.isGroup && target.friend?.sendFile) {
+                    await target.friend.sendFile(filePath);
+                    return true;
+                }
+            } else if (target.sendFile) {
+                await target.sendFile(filePath);
+                return true;
             }
-        } catch (err) { }
+        } catch (err) {
+            logger.error(`[kkp-plugin] 文件发送失败：${err.message}`);
+        }
+        return false;
     };
 
     const uin = isEvent ? target.user_id : (global.Bot?.uin || 123456);
     const name = isEvent ? (target.sender?.card || target.sender?.nickname || "用户") : (global.Bot?.nickname || "Bot");
     const makeNode = (content) => ({ message: content, nickname: String(name), user_id: Number(uin) });
 
-    const tempDir = path.resolve("./temp/kkp-plugin");
-    if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+    const tempDir = createRequestTempDir(PIXIV_TEMP_PREFIX);
+    const cleanupTempDir = () => {
+        try {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+        } catch (error) {
+            logger.error(`[kkp-plugin] 清理临时目录失败：${error.message}`);
+        }
+    };
+    const scheduleTempCleanup = () => {
+        const timer = setTimeout(cleanupTempDir, 3 * 60 * 1000);
+        timer.unref?.();
+    };
 
     const isGroupChat = isEvent ? target.isGroup : !!target.group_id;
     const isR18 = initialMsg[0] && /tag：.*?(R-18|R-18G)/i.test(initialMsg[0]);
@@ -64,6 +93,8 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
     }
 
     let isTextOnly = false;
+    let privateRedirectPromise = null;
+    let privateRedirectSucceeded = false;
 
     // 2. 核心流转策略：群聊遇到 R-18 触发防爆盾与私聊重定向
     if (isGroupChat && isR18 && !config.isPrivateRedirect) {
@@ -75,22 +106,27 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
             const currentPidMatch = initialMsg[0]?.match(/artworks\/(\d+)/);
             const currentPid = currentPidMatch ? currentPidMatch[1] : null;
 
-            // 如果老哥觉得测试同一张图不转发很烦，可以把 && !sentPrivatePids.has(currentPid) 删掉
-            if (currentPid && !sentPrivatePids.has(currentPid)) {
+            if (currentPid && sentPrivatePids.has(currentPid)) {
+                privateRedirectSucceeded = true;
+            } else if (currentPid) {
                 const privateTarget = global.Bot.pickFriend(Number(privateQq));
                 if (privateTarget) {
-                    // 标记去重缓存
+                    if (sentPrivatePids.size >= 200) sentPrivatePids.clear();
                     sentPrivatePids.add(currentPid);
-                    if (sentPrivatePids.size > 200) sentPrivatePids.clear();
 
-                    // 【核心修复】：异步流传，群聊静默退场，发图任务完全交棒给私聊，并安全包裹配置对象
                     logger.mark(`[kkp-plugin] 检测到群聊 R-18 作品 ${currentPid}，正在重定向投递至私聊 ${privateQq}`);
 
-                    // 必须让私聊独立去跑完整的下载发送大本营流程
-                    sendPixivImageWithFallback(privateTarget, initialMsg, originalUrls, {
+                    privateRedirectPromise = sendPixivImageWithFallback(privateTarget, initialMsg, originalUrls, {
                         ...config,
                         isPrivateRedirect: true,
-                        max_images: maxImages // 确保截断数安全透传
+                        max_images: maxImages
+                    }).then(success => {
+                        if (!success) sentPrivatePids.delete(currentPid);
+                        return success;
+                    }).catch(error => {
+                        sentPrivatePids.delete(currentPid);
+                        logger.error(`[kkp-plugin] R-18作品 ${currentPid} 私聊重定向失败：${error.message}`);
+                        return false;
                     });
                 }
             }
@@ -106,17 +142,17 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
 
     let localFiles = [];
     let pixelBombs = [];
+    let downloadedSourceCount = 0;
     // 【核心修正】：专门用于收集过程中的风控提示，绝不碰主体推送的内容
     let warningMsgIds = [];
 
     // 1. 【区块化组装文字节点与独立文案发送】
     // 优先将提取出的精简文案（画师/标题/时间）作为单独消息发送，不进合并转发
-    if (initialMsg[2]) {
-        await sendMsg(initialMsg[2]);
-    }
+    let textMessagesSent = true;
+    if (initialMsg[2]) textMessagesSent = isMessageSent(await sendMsg(initialMsg[2]));
 
     let forwardNodes = [];
-    let mainParts = [initialMsg[0]];
+    let mainParts = [ initialMsg[0] ];
 
     if (overflowMsg) mainParts.push(overflowMsg);
     // mainParts.push(`风控时请戳反代直链：\n${proxyUrlsDisplay.join("\n")}`);
@@ -126,19 +162,23 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
         mainParts.push("✨本作是Pixiv网页动图(Ugoira)，已调用外部专属服务为您实时渲染为 GIF");
     }
 
-    forwardNodes.push(makeNode([mainParts.join("\n\n")]));
+    forwardNodes.push(makeNode([ mainParts.join("\n\n") ]));
 
     if (initialMsg[1]) {
-        forwardNodes.push(makeNode([initialMsg[1]]));
+        forwardNodes.push(makeNode([ initialMsg[1] ]));
     }
 
     let textForward = await makeForwardMsg(forwardNodes);
     let fallbackText = initialMsg[1] ? `${mainParts.join("\n\n")}\n\n${initialMsg[1]}` : mainParts.join("\n\n");
     // 主体文案发送后，不加入撤回列表！稳稳留在记录里！
-    await sendMsg(textForward || [fallbackText]);
+    textMessagesSent = isMessageSent(await sendMsg(textForward || [ fallbackText ])) && textMessagesSent;
 
     if (isTextOnly) {
-        return true;
+        const redirectSucceeded = privateRedirectPromise
+            ? await privateRedirectPromise
+            : privateRedirectSucceeded;
+        cleanupTempDir();
+        return textMessagesSent && redirectSucceeded;
     }
 
     // 2. 下载至本地，扫描体积雷达（植入 Ugoira 云端合成拦截）
@@ -161,13 +201,16 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
 
                 try {
                     // 云端合成比较耗时，把超时时间放宽到 60 秒
+                    const apiUrl = validateUgoiraApiUrl(
+                        config.ugoira_api || "http://127.0.0.1:3008/ugoira"
+                    );
+
                     // 1. 从咱们自己的鉴权模块里秒取缓存的 headers
                     const appHeaders = await getAppApiHeaders();
                     // 2. 剥离出纯净的 access_token (去掉 "Bearer " 前缀)
                     const accessToken = appHeaders.Authorization.replace("Bearer ", "");
 
-                    /// 3. 从配置中读取独立 API 地址，未配置则默认兜底本地环回
-                    const apiUrl = config.ugoira_api || "http://127.0.0.1:3008/ugoira";
+                    // 3. 从配置中读取独立 API 地址，未配置则默认兜底本地环回
                     const apiRes = await axios.post(apiUrl, {
                         pid: pid,
                         access_token: accessToken
@@ -179,6 +222,7 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
                         fs.writeFileSync(gifPath, gifBuffer);
 
                         localFiles.push(gifPath);
+                        downloadedSourceCount++;
                         const stats = fs.statSync(gifPath);
                         // GIF通常较大，同样进雷达扫描，超过10MB走文件形式发送防风控
                         if (stats.size > 10 * 1024 * 1024) pixelBombs.push(gifPath);
@@ -212,6 +256,7 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
         if (buf) {
             fs.writeFileSync(filePath, buf);
             localFiles.push(filePath);
+            downloadedSourceCount++;
             const stats = fs.statSync(filePath);
             if (stats.size > 10 * 1024 * 1024) pixelBombs.push(filePath);
             buf = null;
@@ -222,15 +267,23 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
         let failRes = await sendMsg("⚠️图片全节点下载失败，请点击上方合并转发气泡内的直链查看。");
         // 垃圾提示，加入撤回垃圾桶！
         if (failRes && failRes.message_id) warningMsgIds.push(failRes.message_id);
+        if (recallConfig.recall && warningMsgIds.length > 0) {
+            const timer = setTimeout(() => {
+                for (let msgId of warningMsgIds) recallMsg(msgId);
+            }, recallConfig.time || 60000);
+            timer.unref?.();
+        }
+        cleanupTempDir();
         return false;
     }
 
     // 3. 超过 10MB 的图强制转为文件发送
+    let filesSent = true;
     if (pixelBombs.length > 0) {
         let warnRes = await sendMsg(`检测到 ${pixelBombs.length} 张大体积图，需以文件格式强制发送。若长时间未收到可能是网络抽风，请重发链接或pid。`);
         if (warnRes && warnRes.message_id) warningMsgIds.push(warnRes.message_id);
         for (let filePath of pixelBombs) {
-            await sendFileMsg(filePath);
+            if (!(await sendFileMsg(filePath))) filesSent = false;
             await new Promise(r => setTimeout(r, 2000));
         }
     }
@@ -238,6 +291,7 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
     // 4. 常规图片下发（带超时与风控记录）
     let normalImages = localFiles.filter(f => !pixelBombs.includes(f));
     let failedImages = [];
+    let normalImagesSent = true;
 
     if (normalImages.length > 0) {
         for (let i = 0; i < normalImages.length; i++) {
@@ -269,7 +323,7 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
                 } catch (e) { }
             }
 
-            if (flippedImages.length > 0) {
+            if (flippedImages.length === failedImages.length) {
                 let forwardNodes = [];
 
                 // 节点1：顶部提示文案
@@ -284,7 +338,7 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
                     let fileNameMatch = flippedImages[i].match(/(\d+_(?:p|ugoira)\d+)/);
                     let deadProxyUrl = fileNameMatch ? proxyUrlsDisplay.find(u => u.includes(fileNameMatch[1])) : "";
 
-                    let nodeContent = [segment.image("file://" + flippedImages[i])];
+                    let nodeContent = [ segment.image("file://" + flippedImages[i]) ];
                     if (deadProxyUrl) {
                         nodeContent.push("\n⚠️若图彻底阵亡，请戳备用的反代直链查看：\n" + deadProxyUrl);
                     }
@@ -297,34 +351,32 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
                 }
 
                 // 以原生 Node 格式交由底层适配器发送合并转发消息
-                await sendMsg({
+                const fallbackResult = await sendMsg({
                     type: "node",
                     data: forwardNodes
                 });
+                normalImagesSent = isMessageSent(fallbackResult);
+            } else {
+                normalImagesSent = false;
             }
         }
     }
 
     // 6. 撤回控制 (仅针对风控提示垃圾)
     if (recallConfig && recallConfig.recall && warningMsgIds.length > 0) {
-        // 彻底抛弃大小判定！配置里写几秒，就老老实实乘 1000 转成毫秒！
-        const delayTime = (recallConfig.time || 600) * 1000;
+        const delayTime = recallConfig.time || 60000;
 
-        setTimeout(() => {
+        const timer = setTimeout(() => {
             for (let msgId of warningMsgIds) recallMsg(msgId);
         }, delayTime);
+        timer.unref?.();
     }
 
     // 7. 延时 3 分钟清理文件
-    setTimeout(() => {
-        for (let filePath of localFiles) {
-            try {
-                if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-            } catch (e) { }
-        }
-    }, 3 * 60 * 1000);
+    scheduleTempCleanup();
 
-    return true; // 只要执行完毕（无论是直发还是兜底发出），统一宣告处理成功，确保不影响外层的进度保存
+    const downloadsComplete = downloadedSourceCount === finalUrls.length;
+    return textMessagesSent && downloadsComplete && filesSent && normalImagesSent;
 }
 
 // 【新增：公共文案生成器，一键统管所有 Pixiv 消息结构】
@@ -376,5 +428,5 @@ export function buildPixivMessage(illust, customPrefix = "") {
     }
 
     // 返回结构：[0: 合并主信息(供正则抓PID), 1: 简介(可为空), 2: 单独外发信息]
-    return [mainInfo, captionNode || "", extractedMsg];
+    return [ mainInfo, captionNode || "", extractedMsg ];
 }

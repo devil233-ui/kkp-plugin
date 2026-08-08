@@ -7,10 +7,12 @@ import fs from "fs";
 import path from "path";
 import { sendPixivImageWithFallback, buildPixivMessage } from "./pixivSender.js";
 import { getAppApiHeaders, isPixivTokenActionRequired } from "./pixivAuth.js";
+import { buildPerTargetQueues } from "./pixivPushState.js";
 import { keyValue } from "../config/api.js";
 
 const TOKEN_NOTICE_COOLDOWN = 6 * 60 * 60 * 1000;
 let lastTokenNoticeAt = 0;
+let pushInProgress = false;
 
 async function notifyMasterAboutToken(error) {
     const now = Date.now();
@@ -88,8 +90,18 @@ export class PixivPushPlugin extends plugin {
         return true;
     }
 
+    async requireGroupAdmin(e) {
+        const role = e.sender?.role || e.member?.role;
+        if (!e.isGroup || e.isMaster || role === "owner" || role === "admin") return true;
+
+        await e.reply("仅群主、群管理员或主人可修改本群订阅配置。");
+        return false;
+    }
+
     // ================= 订阅管理相关指令 =================
     async subscribeArtist(e) {
+        if (!(await this.requireGroupAdmin(e))) return false;
+
         const targetId = (e.isGroup ? e.group_id : e.user_id).toString();
         const data = this.loadData();
 
@@ -137,6 +149,8 @@ export class PixivPushPlugin extends plugin {
     }
 
     async unsubscribeArtist(e) {
+        if (!(await this.requireGroupAdmin(e))) return false;
+
         const targetId = (e.isGroup ? e.group_id : e.user_id).toString();
         const data = this.loadData();
         if (!data[targetId]) return;
@@ -257,6 +271,8 @@ export class PixivPushPlugin extends plugin {
     }
 
     async enablePush(e) {
+        if (!(await this.requireGroupAdmin(e))) return false;
+
         const targetId = (e.isGroup ? e.group_id : e.user_id).toString();
         let data = this.loadData();
         if (!data[targetId]) data[targetId] = { "pushEnabled": false, "artists": {} };
@@ -271,6 +287,8 @@ export class PixivPushPlugin extends plugin {
     }
 
     async disablePush(e) {
+        if (!(await this.requireGroupAdmin(e))) return false;
+
         const targetId = (e.isGroup ? e.group_id : e.user_id).toString();
         let data = this.loadData();
         if (!data[targetId]) return;
@@ -285,6 +303,8 @@ export class PixivPushPlugin extends plugin {
     }
 
     async manageTags(e) {
+        if (!(await this.requireGroupAdmin(e))) return false;
+
         const targetId = (e.isGroup ? e.group_id : e.user_id).toString();
         let data = this.loadData();
 
@@ -323,6 +343,8 @@ export class PixivPushPlugin extends plugin {
 
         if (result.state === "empty") {
             await e.reply("检查完毕：订阅的画师暂无更新。");
+        } else if (result.state === "busy") {
+            await e.reply("已有推送检查正在执行，请稍后再试。");
         } else if (result.state === "error") {
             await e.reply(`检查失败，请核对日志或原因：\n${result.reason}`);
         }
@@ -330,6 +352,9 @@ export class PixivPushPlugin extends plugin {
     }
 
     async executePushLogic(isManual = false, targetGroupId = null) {
+        if (pushInProgress) return { state: "busy" };
+        pushInProgress = true;
+
         try {
             const data = this.loadData();
             if (Object.keys(data).length === 0) return { state: "empty" };
@@ -375,14 +400,12 @@ export class PixivPushPlugin extends plugin {
                     }
 
                     const latestIllusts = resData.illusts;
-                    const maxId = latestIllusts[0].id;
+                    const maxId = Math.max(...latestIllusts.map(illust => Number(illust.id)));
                     const targetGroups = artistToGroups[artistId] || [];
 
-                    // 1. 彻底清理无用变量，只保留单纯的新进度列表
                     let needsUpdateGroups = [];
-                    let globalStoredMax = maxId;
+                    const groupProgress = new Map();
 
-                    // 2. 遍历检查各群的进度
                     for (let groupId of targetGroups) {
                         const redisKey = `kkp:pixiv:progress:${groupId}`;
                         const storedMaxStr = await redis.hGet(redisKey, artistId);
@@ -395,7 +418,7 @@ export class PixivPushPlugin extends plugin {
                             logger.mark(`[kkp-plugin] 检测到目标 ${groupId} 手动添加了画师 ${artistId}，已静默初始化基准线为 ${maxId}`);
                         } else if (maxId > storedMax) {
                             needsUpdateGroups.push(groupId);
-                            if (storedMax < globalStoredMax) globalStoredMax = storedMax;
+                            groupProgress.set(groupId, storedMax);
                         } else {
                             debugResponse[`${artistId}_${groupId}`] = "no_update";
                         }
@@ -404,14 +427,22 @@ export class PixivPushPlugin extends plugin {
                     // 拦截：如果没有群需要正常更新（全都没更新或全是刚初始化的），直接切到下一个画师
                     if (needsUpdateGroups.length === 0) continue;
 
-                    // 准备待推送的作品列表（取大于基准线的最老3张发出来）
-                    let targetIllusts = latestIllusts.filter(ill => ill.id > globalStoredMax).reverse().slice(-3);
+                    const { queuedIdsByGroup, targetIllusts } = buildPerTargetQueues(
+                        latestIllusts,
+                        groupProgress,
+                        needsUpdateGroups
+                    );
+                    const blockedGroups = new Set();
 
                     for (let illust of targetIllusts) {
+                        const illustId = Number(illust.id);
+                        const eligibleGroups = needsUpdateGroups.filter(gid => (
+                            !blockedGroups.has(gid) && queuedIdsByGroup.get(gid)?.has(String(illust.id))
+                        ));
                         const illustTags = illust.tags.flatMap(t => [ t.name, t.translated_name ]).filter(Boolean);
                         let validGroups = [];
 
-                        for (let gid of needsUpdateGroups) {
+                        for (let gid of eligibleGroups) {
                             const groupTags = data[gid].tags || { whitelist: [], blacklist: [] };
                             if (groupTags.blacklist.some(b => illustTags.some(i => i.includes(b)))) continue;
                             if (groupTags.whitelist.length > 0 && !groupTags.whitelist.some(w => illustTags.some(i => i.includes(w)))) continue;
@@ -426,47 +457,53 @@ export class PixivPushPlugin extends plugin {
                             targetImgUrls = [ illust.meta_single_page.original_image_url ];
                         }
 
-                        // 只有当有群需要接收这张图时，才去拼文案和发图
+                        const sendSuccessGroups = [];
                         if (validGroups.length > 0 && targetImgUrls.length > 0) {
-                            const date = new Date(illust.create_date);
-                            const utc8Date = new Date(date.getTime() + 8 * 60 * 60 * 1000);
-                            const formattedTime = `${utc8Date.getUTCFullYear()}-${String(utc8Date.getUTCMonth() + 1).padStart(2, "0")}-${String(utc8Date.getUTCDate()).padStart(2, "0")} ${String(utc8Date.getUTCHours()).padStart(2, "0")}:${String(utc8Date.getUTCMinutes()).padStart(2, "0")}:${String(utc8Date.getUTCSeconds()).padStart(2, "0")}`;
-
-                            // 传个前缀进去，引擎会帮你拼好
                             const customPrefix = `爷爷，您关注的画师：${illust.user.name}（${illust.user.id}）更新了`;
                             const infoMsg = buildPixivMessage(illust, customPrefix);
 
-                            // 【核心修复】：删除了外面那两行提前调用且使用未定义变量的幽灵代码！
-
-                            let sendSuccessGroups = [];
                             for (let gid of validGroups) {
-                                // 【核心修复】：智能识别目标是群聊还是私聊，彻底解决私聊无响应问题
                                 let target = global.Bot.gl && global.Bot.gl.has(Number(gid))
                                     ? global.Bot.pickGroup(Number(gid))
                                     : global.Bot.pickFriend(Number(gid));
 
-                                if (!target) continue;
+                                if (!target) {
+                                    blockedGroups.add(gid);
+                                    continue;
+                                }
 
                                 let sendConfig = {
                                     ...pluginConfig,
                                     ...(data[gid]?.recallConfig || {})
                                 };
 
-                                const isSuccess = await sendPixivImageWithFallback(target, infoMsg, targetImgUrls, sendConfig);
-
-                                if (isSuccess) sendSuccessGroups.push(gid);
+                                try {
+                                    const isSuccess = await sendPixivImageWithFallback(target, infoMsg, targetImgUrls, sendConfig);
+                                    if (isSuccess) {
+                                        sendSuccessGroups.push(gid);
+                                        hasUpdates = true;
+                                    } else {
+                                        blockedGroups.add(gid);
+                                    }
+                                } catch (sendError) {
+                                    blockedGroups.add(gid);
+                                    logger.error(`[kkp-plugin] 向目标 ${gid} 推送作品 ${illust.id} 失败：${sendError.message}`);
+                                }
 
                                 await new Promise(r => setTimeout(r, 2000));
                             }
+                        }
 
-                            hasUpdates = true;
+                        const filteredGroups = eligibleGroups.filter(gid => !validGroups.includes(gid));
+                        const noImageGroups = targetImgUrls.length === 0 ? validGroups : [];
+                        const advanceGroups = new Set([ ...filteredGroups, ...noImageGroups, ...sendSuccessGroups ]);
 
-                            // 防丢图更新进度：只更新那些真正发送成功的群
-                            for (let gid of needsUpdateGroups) {
-                                if (validGroups.includes(gid) && !sendSuccessGroups.includes(gid)) {
-                                    continue; // 被风控拦截全军覆没，不更新进度，等下次重试
-                                }
-                                await redis.hSet(`kkp:pixiv:progress:${gid}`, artistId, illust.id);
+                        for (let gid of advanceGroups) {
+                            const currentProgress = Number(groupProgress.get(gid) || 0);
+                            const nextProgress = Math.max(currentProgress, illustId);
+                            if (nextProgress > currentProgress) {
+                                await redis.hSet(`kkp:pixiv:progress:${gid}`, artistId, nextProgress);
+                                groupProgress.set(gid, nextProgress);
                             }
                         }
                     }
@@ -493,6 +530,8 @@ export class PixivPushPlugin extends plugin {
                 logger.error(`[kkp-plugin] 顶层推送逻辑崩溃: ${error.stack}`);
             }
             return { state: "error", reason: error.message };
+        } finally {
+            pushInProgress = false;
         }
     }
 }
