@@ -5,6 +5,7 @@ import YAML from "yaml";
 import crypto from "crypto";
 import { sendPixivImageWithFallback, buildPixivMessage } from "./pixivSender.js";
 import { getAppApiHeaders } from "./pixivAuth.js";
+import { extractPixivId, PIXIV_INPUT_RULE } from "./pixivInput.js";
 
 export class PixivImageFetcher extends plugin {
     constructor() {
@@ -15,7 +16,7 @@ export class PixivImageFetcher extends plugin {
             priority: -114514,
             rule: [
                 {
-                    reg: "#?pid(\\d+)|pixiv\\.net\\/(?:\\w+\\/)?(?:artworks|i)\\/(\\d+)",
+                    reg: PIXIV_INPUT_RULE,
                     fnc: "processPixivImages"
                 }
             ]
@@ -31,12 +32,7 @@ export class PixivImageFetcher extends plugin {
     // ================= 核心处理逻辑 =================
     async processPixivImages(e) {
         try {
-            let matchedPid = null;
-            const pidMatch = e.msg.match(/#?pid\s*(\d+)/i);
-            const urlMatch = e.msg.match(/pixiv\.net\/(?:\w+\/)?(?:artworks|i)\/(\d+)/i);
-
-            if (pidMatch) matchedPid = pidMatch[1];
-            else if (urlMatch) matchedPid = urlMatch[1];
+            const matchedPid = extractPixivId(e.msg);
 
             if (!matchedPid) return false;
 
