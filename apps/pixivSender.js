@@ -4,6 +4,7 @@ import path from "path";
 import { FlipImage } from "./flip.js";
 import { cleanupExpiredTempDirs, createRequestTempDir } from "./tempFiles.js";
 import { validateUgoiraApiUrl } from "./ugoiraEndpoint.js";
+import { isRichMediaTransferFailure, resolveMaxImageSize } from "./pixivSendPolicy.js";
 import { pximgProxy } from "../config/api.js";
 const sentPrivatePids = new Set();
 import { getAppApiHeaders } from "./pixivAuth.js";
@@ -18,9 +19,27 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
     // 从 config 中提取配置，如果没有则给默认值
     const recallConfig = config.recallConfig || { recall: config.recall || false, time: config.time || 60000 };
     const maxImages = config.max_images || 40;
+    const maxImageSize = resolveMaxImageSize(config);
 
     // 基础消息与撤回 API
-    const sendMsg = async(msg) => isEvent ? await target.reply(msg).catch(() => null) : await target.sendMsg(msg).catch(() => null);
+    const dispatchMsg = (msg) => isEvent ? target.reply(msg) : target.sendMsg(msg);
+    const sendMsg = async(msg) => {
+        try {
+            return await dispatchMsg(msg);
+        } catch (error) {
+            return null;
+        }
+    };
+    const sendImageMsg = async(filePath) => {
+        try {
+            return {
+                result: await dispatchMsg(segment.image("file://" + filePath)),
+                error: null
+            };
+        } catch (error) {
+            return { result: null, error };
+        }
+    };
     const isMessageSent = (result) => (
         result !== null && result !== undefined && result !== false &&
         (typeof result !== "object" || result.message_id !== undefined)
@@ -224,8 +243,7 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
                         localFiles.push(gifPath);
                         downloadedSourceCount++;
                         const stats = fs.statSync(gifPath);
-                        // GIF通常较大，同样进雷达扫描，超过10MB走文件形式发送防风控
-                        if (stats.size > 10 * 1024 * 1024) pixelBombs.push(gifPath);
+                        if (stats.size > maxImageSize.bytes) pixelBombs.push(gifPath);
 
                         continue; // GIF 渲染成功，直接跳过后面的普通下载逻辑！
                     }
@@ -258,7 +276,7 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
             localFiles.push(filePath);
             downloadedSourceCount++;
             const stats = fs.statSync(filePath);
-            if (stats.size > 10 * 1024 * 1024) pixelBombs.push(filePath);
+            if (stats.size > maxImageSize.bytes) pixelBombs.push(filePath);
             buf = null;
         }
     }
@@ -277,10 +295,10 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
         return false;
     }
 
-    // 3. 超过 10MB 的图强制转为文件发送
+    // 3. 超过配置上限的图转为文件发送
     let filesSent = true;
     if (pixelBombs.length > 0) {
-        let warnRes = await sendMsg(`检测到 ${pixelBombs.length} 张大体积图，需以文件格式强制发送。若长时间未收到可能是网络抽风，请重发链接或pid。`);
+        let warnRes = await sendMsg(`检测到 ${pixelBombs.length} 张超过 ${maxImageSize.megabytes} MiB 的图片，需以文件格式发送。若长时间未收到可能是网络抽风，请重发链接或pid。`);
         if (warnRes && warnRes.message_id) warningMsgIds.push(warnRes.message_id);
         for (let filePath of pixelBombs) {
             if (!(await sendFileMsg(filePath))) filesSent = false;
@@ -292,12 +310,25 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
     let normalImages = localFiles.filter(f => !pixelBombs.includes(f));
     let failedImages = [];
     let normalImagesSent = true;
+    let richMediaFallbackWarned = false;
 
     if (normalImages.length > 0) {
         for (let i = 0; i < normalImages.length; i++) {
-            let res = await sendMsg(segment.image("file://" + normalImages[i]));
-            if (!res || res.message_id === undefined) {
-                failedImages.push(normalImages[i]);
+            const filePath = normalImages[i];
+            const { result, error } = await sendImageMsg(filePath);
+            if (!isMessageSent(result)) {
+                const failure = error || result;
+                if (isRichMediaTransferFailure(failure)) {
+                    logger.warn(`[kkp-plugin] 图片直发被QQ富媒体接口拒绝，改用文件发送：${path.basename(filePath)}`);
+                    if (!richMediaFallbackWarned) {
+                        const warnRes = await sendMsg("⚠️图片发送被QQ富媒体接口拒绝，已自动改用文件发送。");
+                        if (warnRes && warnRes.message_id) warningMsgIds.push(warnRes.message_id);
+                        richMediaFallbackWarned = true;
+                    }
+                    if (!(await sendFileMsg(filePath))) failedImages.push(filePath);
+                } else {
+                    failedImages.push(filePath);
+                }
             }
             if (i < normalImages.length - 1) await new Promise(r => setTimeout(r, 1500));
         }
