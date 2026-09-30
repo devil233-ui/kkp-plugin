@@ -2,7 +2,7 @@
 
 安装
 ```
-git clone https://gitee.com/dungeonmaster/kkp-plugin.git ./plugins/kkp-plugin/
+git clone https://github.com/devil233-ui/kkp-plugin.git ./plugins/kkp-plugin/
 ```
 安装依赖
 ```
