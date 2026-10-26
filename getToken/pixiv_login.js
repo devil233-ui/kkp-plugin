@@ -13,6 +13,9 @@
 //   node pixiv_login.js verify   # 用 token.yaml 里的 RefreshToken 实测刷新
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import { fileURLToPath } from 'node:url';
 
 const CLIENT_ID = 'MOBrBDS8blbauoSck0ZfDbtuzpyT';
 const CLIENT_SECRET = 'lsACyCD94FhDUtGTXi3QzcFE2uU1hqtDaKeqrdwj';
@@ -20,8 +23,10 @@ const REDIRECT_URI = 'https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback
 const LOGIN_URL = 'https://app-api.pixiv.net/web/v1/login';
 const AUTH_TOKEN_URL = 'https://oauth.secure.pixiv.net/auth/token';
 const UA = 'PixivAndroidApp/5.0.234 (Android 11; Pixel 5)';
-const TOKEN_YAML = '/root/Yunzai/plugins/kkp-plugin/config/token.yaml';
-const STATE_FILE = '/tmp/pixiv_pkce_state.json';
+// token.yaml 与状态文件都相对本文件定位，安装在任何机器都能用：
+//   <插件根>/config/token.yaml；状态文件放系统临时目录（Windows 是 %TEMP%）
+const TOKEN_YAML = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../config/token.yaml');
+const STATE_FILE = path.join(os.tmpdir(), 'pixiv_pkce_state.json');
 const STATE_TTL_MS = 10 * 60 * 1000;
 
 const b64url = (buf) =>
@@ -99,7 +104,7 @@ async function main() {
     const verifier = crypto.randomBytes(32).toString('base64url');
     const challenge = s256(verifier);
     const state = { verifier, created: Date.now() };
-    fs.writeFileSync(STATE_FILE, JSON.stringify(state), { mode: 0o600 });
+    fs.writeFileSync(STATE_FILE, JSON.stringify(state), os.platform() === 'win32' ? undefined : { mode: 0o600 });
     log('PKCE 已生成，verifier 已存 ' + STATE_FILE + '（10 分钟内有效）');
     log('');
     log('在本机浏览器打开下面链接并登录 Pixiv：');
@@ -145,7 +150,7 @@ async function main() {
     const v = await verifyRt(rt);
     if (v.alive) {
       log('✅ 写入后复验通过（ALIVE）');
-      log('最后一步让 kkp 用上新 token：pm2 restart yz');
+      log('token.yaml 会被 kkp 热加载；如未生效可重启 Yunzai（pm2 restart yz 等）');
     } else {
       log(`⚠️ 复验未通过: ${v.detail}`);
       process.exit(2);
