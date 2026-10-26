@@ -39,7 +39,7 @@ export function normalizePixivAuthError(error) {
 
     if (tokenRejected) {
         return new PixivAuthError(
-            "Pixiv RefreshToken已失效或被拒绝，请运行plugins/kkp-plugin/getToken/pixiv_auth.py重新获取，并替换config/token.yaml中的RefreshToken",
+            "Pixiv 授权已过期：请在 getToken 目录运行 node refresh.js 按提示重新获取并自动更新配置",
             PIXIV_REFRESH_TOKEN_INVALID,
             { cause: error }
         );

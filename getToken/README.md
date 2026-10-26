@@ -36,7 +36,7 @@ node refresh.js
 ## 手动路线（refresh.js 分流失败时用）
 
 - **服务器**：`node pixiv_login.js login` → 浏览器登录 → `node pixiv_login.js exchange '<复制的URL>'`，自动备份并写入 token.yaml 后复验；`node pixiv_login.js verify` 随时查 token 死活。
-- **本机（Python）**：`python pixiv_auth.py login` → 按 README 顶部老流程 F12 抓 code 粘回 → 手动把打印出的 `refresh_token` 替换进 `../config/token.yaml` 的 `RefreshToken` 行。国内环境先装 socks 支持：`pip install pysocks` 并设 `ALL_PROXY=socks5h://127.0.0.1:10808`。
+- **本机（Node）**：`node pixiv_login.js login` → 浏览器登录 → `node pixiv_login.js exchange '<复制的URL>'`（脚本会经 `127.0.0.1:10808` socks 代理换 token；token.yaml 写好后 kkp 热加载生效）。
 
 ## 常见问题
 
