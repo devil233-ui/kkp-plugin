@@ -31,5 +31,21 @@ docker exec -it TRSS_AllBot /bin/bash
 pacman -S python-pillow
 ```
 
+## 动图（ugoira）渲染
+
+插件把 pixiv 动图转成 GIF 的渲染服务已内置在本插件目录：`ugoira_server.mjs`（零第三方依赖，只需系统有 `ffmpeg` 和 `unzip`），默认监听 `127.0.0.1:3008`，与 `config/config.yaml` 里的 `ugoira_api` 对应。
+
+用 pm2 守护启动：
+
+```
+pm2 start ./plugins/kkp-plugin/ugoira_server.mjs --name ugoira-local
+pm2 save
+```
+
+- 渲染串行执行（同一时间只处理一张动图），超时上限 60 秒
+- 只监听回环地址 127.0.0.1，不暴露公网
+- 固定 540px 全帧率渲染，不做压缩降级；超过 `max_image_size_mb` 上限时插件会自动转成文件发送
+- 如果你想用别的渲染服务，把 `ugoira_api` 改成对应地址即可，接口协议为 `POST {pid, access_token}` → `{status:"success", data:<base64 gif>}`
+
 ## ✨ 功能    欢迎加群1030860570
 ![输入图片说明](https://foruda.gitee.com/images/1717359187534988738/93d70d05_11990909.png "屏幕截图")

@@ -215,7 +215,7 @@ export async function sendPixivImageWithFallback(target, initialMsg, originalUrl
             const pid = pidMatch ? pidMatch[1] : null;
 
             if (pid) {
-                let warnMsg = await sendMsg("⏳检测到高帧率动图，正呼叫海外服务器进行无损压缩渲染，请稍候...");
+                let warnMsg = await sendMsg("⏳检测到高帧率动图，正在进行无损压缩渲染，请稍候...");
                 if (warnMsg && warnMsg.message_id) warningMsgIds.push(warnMsg.message_id);
 
                 try {
