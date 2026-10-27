@@ -26,7 +26,7 @@ Yunzai 的 `#` 前缀可省略，对外文案与文档一律不带 `#`，避免�
 - 2026-10-28 起 ugoira→GIF 渲染在**伊涅芙本地**跑（迷迷 3008 隧道服务已停用并 disable，`kkp-ugoira-tunnel.service` 保留仅作回滚备份；迷迷侧 flask 服务本身还在，只是出口对 pixiv 卡死）。
 - 服务：`pm2 start ugoira_server.mjs --name ugoira-local`，监听 127.0.0.1:3008，API 契约与原迷迷服务一致（POST /ugoira {pid, access_token} → {status:"success", data:<base64gif>}），config.yaml 的 ugoira_api 无需改。
 - 管线：app-api meta（需 Bearer access_token）→ 拉 zip → unzip → ffmpeg concat（pixiv 帧表不均匀帧率）→ palettegen/paletteuse。
-- 体积控制：目标 20MB 内（与 pixivSendPolicy DEFAULT_MAX_IMAGE_SIZE_MB 对齐），ladder [540x24, 540x18, 480x18, 480x12, 432x12, 360x10] 逐级降；超 20MB 仍返回但带 oversized 标记，由插件 pixelBomb 逻辑兜底拒发。
-- 实测：151103718 15.5MB/540px@24fps；151354170（R-18）25.2s 16.7MB/540px@18fps（自动降了一级帧率）。
+- **不做体积控制**（用户明确要求）：固定 540px 全帧率单次渲染，行为与原迷迷服务一致；超过 max_image_size_mb（默认 20MiB）时插件自己会转成文件发送（pixelBombs 逻辑），服务端不要替插件做降级决策。
+- 实测：151103718 15.5MB；151354170（R-18）26.2s 22.9MB。
 - 内存敏感：渲染串行（MAX_CONCURRENT=1），ffmpeg palettegen 峰值约 300MB；伊涅芙 2GB 低内存，不要并行起多个渲染。
 - 工作目录用 mkdtemp（os.tmpdir()），进程退出自动清理，无残留帧文件。

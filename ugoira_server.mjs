@@ -6,8 +6,6 @@
 //   失败 → { error: "..." }（HTTP 4xx/5xx）
 //
 // 管线：app-api meta → 下载 zip 帧 → 解压 → ffmpeg concat（不均匀帧率）→ palette GIF
-// 体积控制：目标 20MB 内（QQ 传输 + 插件 pixelBomb 上限），
-//   分辨率逐级 540→480→432→360，帧率逐级 24→18→12，迭代到达标。
 import http from "http";
 import fs from "fs";
 import path from "path";
@@ -20,7 +18,6 @@ const PORT = Number(process.env.UGOIRA_PORT || 3008);
 const HOST = "127.0.0.1";
 const META_API = "https://app-api.pixiv.net/v1/ugoira/metadata";
 const UA = "PixivAndroidApp/5.0.234 (Android 11; Pixel 5)";
-const MAX_GIF_BYTES = 20 * 1024 * 1024; // 20MiB，与插件 DEFAULT_MAX_IMAGE_SIZE_MB 对齐
 const MAX_CONCURRENT = 1; // 2GB 内存机器，渲染串行
 let active = 0;
 
@@ -76,17 +73,14 @@ async function renderGif(workDir, frames, width, fpsCap) {
     return outGif;
 }
 
-async function renderToTargetSize(workDir, frames) {
-    const ladder = [[540, 24], [540, 18], [480, 18], [480, 12], [432, 12], [360, 10]];
-    let lastGif = null;
-    for (const [width, fps] of ladder) {
-        const gifPath = await renderGif(workDir, frames, width, fps);
-        const size = fs.statSync(gifPath).size;
-        lastGif = gifPath;
-        if (size <= MAX_GIF_BYTES) return { gifPath, width, fps, size };
-        fs.unlinkSync(gifPath); // 超限的中间产物及时删
-    }
-    return { gifPath: lastGif, width: 360, fps: 10, size: fs.statSync(lastGif).size, oversized: true };
+async function renderOnce(workDir, frames) {
+    const outGif = path.join(workDir, "out.gif");
+    const concat = frames.map(f => `file '${f.file}'\nduration ${(f.delay / 1000).toFixed(3)}`).join("\n")
+        + `\nfile '${frames[frames.length - 1].file}'`;
+    fs.writeFileSync(path.join(workDir, "list.txt"), concat);
+    const vf = "scale=540:-2:flags=lanczos,split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=4";
+    await run("ffmpeg", ["-y", "-f", "concat", "-safe", "0", "-i", "list.txt", "-vf", vf, outGif], { cwd: workDir });
+    return outGif;
 }
 
 async function handleUgoira(body) {
@@ -110,9 +104,10 @@ async function handleUgoira(body) {
                 throw Object.assign(new Error(`frame file missing: ${f.file}`), { status: 502 });
             }
         }
-        const { gifPath, width, fps, size, oversized } = await renderToTargetSize(workDir, frames);
+        const gifPath = await renderOnce(workDir, frames);
+        const size = fs.statSync(gifPath).size;
         const b64 = fs.readFileSync(gifPath).toString("base64");
-        return { status: "success", data: b64, meta: { width, fps, size, oversized, frames: frames.length } };
+        return { status: "success", data: b64, meta: { size, frames: frames.length } };
     } finally {
         fs.rmSync(workDir, { recursive: true, force: true });
     }
@@ -142,7 +137,7 @@ const server = http.createServer(async (req, res) => {
         try {
             const parsed = JSON.parse(body || "{}");
             const result = await handleUgoira(parsed);
-            console.log(`[ugoira] pid=${parsed.pid} ok ${((Date.now() - t0) / 1000).toFixed(1)}s size=${result.meta.size} ${result.meta.width}px@${result.meta.fps}fps${result.meta.oversized ? " OVERSIZED" : ""}`);
+            console.log(`[ugoira] pid=${parsed.pid} ok ${((Date.now() - t0) / 1000).toFixed(1)}s size=${result.meta.size}`);
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(JSON.stringify(result));
         } catch (e) {
