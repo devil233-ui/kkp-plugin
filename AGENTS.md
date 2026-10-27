@@ -20,3 +20,13 @@ Yunzai 的 `#` 前缀可省略，对外文案与文档一律不带 `#`，避免�
 - 底层全部走 `getToken/pixiv_login.js`（login/exchange/verify），不在群里暴露账号名与 token（sanitize 抹除）。
 - Windows 用户本机刷新走 `getToken/refresh.js` 统一入口（独立 Edge CDP 9223 + Network 层抓 pixiv:// 深链）；服务器直接用上面三条指令。
 - 报错文案见 apps/pixivAuth.js：token 失效提示已改指 p站ck刷新 指令。
+
+## Ugoira 本地渲染服务（ugoira_server.mjs + pm2 `ugoira-local`）
+
+- 2026-10-28 起 ugoira→GIF 渲染在**伊涅芙本地**跑（迷迷 3008 隧道服务已停用并 disable，`kkp-ugoira-tunnel.service` 保留仅作回滚备份；迷迷侧 flask 服务本身还在，只是出口对 pixiv 卡死）。
+- 服务：`pm2 start ugoira_server.mjs --name ugoira-local`，监听 127.0.0.1:3008，API 契约与原迷迷服务一致（POST /ugoira {pid, access_token} → {status:"success", data:<base64gif>}），config.yaml 的 ugoira_api 无需改。
+- 管线：app-api meta（需 Bearer access_token）→ 拉 zip → unzip → ffmpeg concat（pixiv 帧表不均匀帧率）→ palettegen/paletteuse。
+- 体积控制：目标 20MB 内（与 pixivSendPolicy DEFAULT_MAX_IMAGE_SIZE_MB 对齐），ladder [540x24, 540x18, 480x18, 480x12, 432x12, 360x10] 逐级降；超 20MB 仍返回但带 oversized 标记，由插件 pixelBomb 逻辑兜底拒发。
+- 实测：151103718 15.5MB/540px@24fps；151354170（R-18）25.2s 16.7MB/540px@18fps（自动降了一级帧率）。
+- 内存敏感：渲染串行（MAX_CONCURRENT=1），ffmpeg palettegen 峰值约 300MB；伊涅芙 2GB 低内存，不要并行起多个渲染。
+- 工作目录用 mkdtemp（os.tmpdir()），进程退出自动清理，无残留帧文件。
