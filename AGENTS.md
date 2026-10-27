@@ -7,14 +7,16 @@
 - **抓code必须在CDP Network层**：pixiv登录成功后302到`pixiv://account/login?code=...`深链，浏览器无法导航、tab URL不变、历史不记录——轮询tab URL或Edge历史永远抓不到；正确做法是CDP `Network.enable`监听`Network.requestWillBeSent`/`responseReceived`里的重定向链（本机脚本`pixiv_cdp_watch.py`，独立Edge profile `%TEMP%\pixiv-edge-cdp`，端口9222）。本机请求走socks5h://127.0.0.1:10808（oauth.secure.pixiv.net无代理直连会失败；`requests`需pysocks）。
 - **刷新token不重启也能生效**：apps/pixivAuth.js热加载config/token.yaml；但`pm2 restart yz`最干净（`pixiv_token.ps1`已自动重启）。
 
-## #p站ck 指令（apps/PixivTokenCmd.js）
+## p站ck 指令（apps/PixivTokenCmd.js）
+
+Yunzai 的 `#` 前缀可省略，对外文案与文档一律不带 `#`，避免误以为强制。
 
 | 指令 | 权限 | 作用 |
 |---|---|---|
-| `#p站ck` | master | 实测刷新当前 RefreshToken，回 ALIVE/DEAD |
-| `#p站ck刷新` | master | 生成登录链接发群，登记 10 分钟刷新会话 |
-| `#p站码 <回跳链接>` | master | 用回跳链接里的 code 换新 token 并写入 config/token.yaml（热加载，无需重启） |
+| `p站ck` | master | 实测刷新当前 RefreshToken，回 ALIVE/DEAD |
+| `p站ck刷新` | master | 生成登录链接发群，登记 10 分钟刷新会话 |
+| `p站码 <回跳链接>` | master | 用回跳链接里的 code 换新 token 并写入 config/token.yaml（热加载，无需重启） |
 
 - 底层全部走 `getToken/pixiv_login.js`（login/exchange/verify），不在群里暴露账号名与 token（sanitize 抹除）。
 - Windows 用户本机刷新走 `getToken/refresh.js` 统一入口（独立 Edge CDP 9223 + Network 层抓 pixiv:// 深链）；服务器直接用上面三条指令。
-- 报错文案见 apps/pixivAuth.js：token 失效提示已改指 `#p站ck刷新` 指令。
+- 报错文案见 apps/pixivAuth.js：token 失效提示已改指 p站ck刷新 指令。

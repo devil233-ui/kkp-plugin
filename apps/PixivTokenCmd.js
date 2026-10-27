@@ -6,7 +6,12 @@ import { fileURLToPath } from "url";
 const GET_TOKEN_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "getToken");
 const REFRESH_TTL_MS = 10 * 60 * 1000;
 
-// user_id -> 会话创建时间；只允许 master 自己的下一发「#p站码 …」生效
+// 指令名（Yunzai 的 # 前缀可省略，文案里不写，避免误以为强制）
+const CMD_STATUS = "p站ck";
+const CMD_REFRESH = "p站ck刷新";
+const CMD_CODE = "p站码";
+
+// user_id -> 会话创建时间；只允许 master 自己的下一发「p站码 …」生效
 const refreshSessions = new Map();
 
 function runTool(args, timeout = 60000) {
@@ -48,7 +53,7 @@ export class PixivTokenCmd extends plugin {
         });
     }
 
-    // #p站ck —— 查当前 token 死活
+    // p站ck —— 查当前 token 死活（# 前缀可省略）
     async tokenStatus(e) {
         const r = await runTool(["verify"], 30000);
         const out = sanitize(r.text);
@@ -56,7 +61,7 @@ export class PixivTokenCmd extends plugin {
         return true;
     }
 
-    // #p站ck刷新 —— 生成登录链接，等 master 回贴回跳地址
+    // p站ck刷新 —— 生成登录链接，等 master 回贴回跳地址
     async tokenRefresh(e) {
         const r = await runTool(["login"], 15000);
         const url = (r.text.match(/https:\/\/app-api\.pixiv\.net\/web\/v1\/login\S+/) || [])[0];
@@ -69,25 +74,25 @@ export class PixivTokenCmd extends plugin {
             "请在浏览器打开下面链接登录 P 站；登录成功后浏览器停在打不开的空白页是正常的：",
             url,
             "",
-            `然后把地址栏的完整链接发给我：#p站码 链接（${REFRESH_TTL_MS / 60000} 分钟内有效）`
+            `然后把地址栏的完整链接发给我：${CMD_CODE} 链接（${REFRESH_TTL_MS / 60000} 分钟内有效）`
         ].join("\n"));
         return true;
     }
 
-    // #p站码 <回跳链接或纯code> —— 换取并写入 token.yaml（热加载，无需重启）
+    // p站码 <回跳链接或纯code> —— 换取并写入 token.yaml（热加载，无需重启）
     async tokenSubmit(e) {
         const input = e.msg.replace(/^#?p站码\s*/, "").trim();
         const created = refreshSessions.get(e.user_id);
         if (!created) {
             if (input.includes("code=")) {
-                await e.reply("当前没有进行中的刷新，请先发 #p站ck刷新");
+                await e.reply(`当前没有进行中的刷新，请先发 ${CMD_REFRESH}`);
                 return true;
             }
             return false;
         }
         if (Date.now() - created > REFRESH_TTL_MS) {
             refreshSessions.delete(e.user_id);
-            await e.reply("刷新会话已超时（超过10分钟），请重新发 #p站ck刷新");
+            await e.reply(`刷新会话已超时（超过10分钟），请重新发 ${CMD_REFRESH}`);
             return true;
         }
         refreshSessions.delete(e.user_id);
